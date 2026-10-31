@@ -1,0 +1,9 @@
+# 含 sudo 密码，禁止提交
+password.for.wsl.lock
+
+# Rust 构建产物
+target/
+
+# 系统临时文件
+.DS_Store
+Thumbs.db
