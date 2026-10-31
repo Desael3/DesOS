@@ -1,0 +1,23 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-kernel:
+    name: Build DesOS kernel (no_std)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust nightly + bare-metal target
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-unknown-none
+          components: rust-src, llvm-tools-preview
+
+      - name: Build kernel
+        run: cargo build --target x86_64-unknown-none
