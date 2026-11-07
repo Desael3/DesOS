@@ -1,243 +1,286 @@
-# DesOS 项目路线图（Project Roadmap）
+# DesOS 项目路线图（ProjectRoad）
 
-> 操作系统名称：**DesOS**
-> 当前阶段目标：**先做电脑（x86_64 架构）**
-> 文档定位：从「下载第一个工具」开始，把每一步拆到最小，便于逐条执行与核对。
-
----
-
-## 0. 目标与范围（先对齐，再动手）
-
-### 0.1 用户视角的最终目标（暂定）
-1. **软件兼容**：能运行 Windows 的 `EXE / BAT / CMD / MSI`、Android 的 `APK`、Linux 的 `DEB` 及其安装后的程序。
-2. **UI**：类似 Windows 但更「圆滑/软」的界面风格。
-3. **CLI**：类似 Linux 的命令行，但说明更清晰、更友好。
-4. **硬件性能**：与其他系统一致，主要取决于设备自身硬件。
-5. **省电**：笔记本上比 Windows 更省电（更好的空闲调度与电源状态管理）。
-6. **更新体验**：安全更新不烦人（静默、可计划、可回滚）。
-7. **用户模型**：区分 `user / sudo-user / system-user / kernel-user` 并配置对应权限。
-8. **自有生态**：有自己的软件/程序后缀名，并自动区分 `/` 与 `\` 路径。
-
-### 0.2 必须提前说清楚的真相（重要）
-- 目标 1 相当于同时做 **ReactOS（Windows 兼容）+ Android 运行时 + Debian 兼容层**，这是世界级工程，单人或小团队需要以「年」为单位推进。
-- 因此本路线图采用 **「内核自研 + 用户态兼容层（personality servers）」** 的架构，把最难的部分（Win32/Android/Linux 兼容）放到用户态逐步攻克，而非一上来就重写整个生态。
-- **程序栈由我（按你的授权）决定**，见第 2 节。
-
-### 0.3 阶段优先级（先跑起来，再谈兼容）
-```
-阶段 A：能启动、能显字、能进 shell        （内核 + 引导 + 最简驱动）
-阶段 B：有图形、有窗口、有软 UI            （显示/输入/窗口管理器）
-阶段 C：自有软件生态（.desos 包 + 路径规则）
-阶段 D：Linux 兼容层（先跑 DEB / 命令行程序）
-阶段 E：Windows 兼容层（Wine 思路跑 EXE）
-阶段 F：Android 兼容层（跑 APK，需要 Linux 内核 ABI 子集）
-阶段 G：省电 / 更新 / 权限模型打磨
-```
-> 兼容层的顺序是现实考量：**先 Linux（最难的内核 ABI 提前打底，Android 也依赖它），再 Windows（用户态翻译），最后 Android（需要前两者）。**
+> 从零开始做一个操作系统。先做**电脑（x86_64）**，后续再扩展到手机/平板/手表等。
+> 本文档是**路线图 + 行动清单**。每一步都拆到最小（一步只干一件小事），做完一步就把它前面的 `[ ]` 改成 `[x]`。
+> 环境沿用：`Windows 11` + `WSL2 (Ubuntu 24.04)`。涉及跨环境的地方会单独标 `[Win]` 或 `[WSL]`。
+> 习惯遵循 `promat.md`：装前先查、Windows 软件装 D 盘、提权读 `password.for.wsl.lock` 用 `sudo -S`、QEMU 用 Windows 版、验证看版本号。
 
 ---
 
-## 1. 环境准备：工具下载与安装（最小步骤）
+## 0. 项目总览
 
-> 前提：你的宿主机是 **Windows（win32 / PowerShell）**，所以采用
-> **Windows 11 + WSL2 (Ubuntu 24.04)** 作为开发环境，再用 **QEMU** 在本机虚拟化测试。
-> 每一步只做一件事。
+### 0.1 最终目标（用户视角，暂定）
+1. 兼容 / 大部分兼容：
+   - Windows：`EXE`、`BAT`、`CMD`、`MSI`
+   - Android：`APK`
+   - Linux：`DEB`
+   - 以及上述安装包安装后的软件运行
+2. 类似 Windows 但更**圆润/柔和**的 UI
+3. 类似 Linux 的 CLI，但**说明更清晰**
+4. 硬件表现与其他系统一致（主要看机器本身性能）
+5. 笔记本更**省电**
+6. 安全更新**不打扰**（不像 Windows 那么烦人）
+7. 类似 Linux 的权限分级：`user` / `sudo-user` / `system-user` / `kernel-user`
+8. 自有软件/程序后缀名，且**自动区分 `/` 和 `\` 路径**
 
-### 1.1 安装 Linux 子系统和基础环境
-- [x] **步骤 1**：打开 Microsoft Store，搜索并安装 **Ubuntu 24.04 LTS**。（已完成：`Ubuntu-24.04` 已注册并 Running）
-- [x] **步骤 2**：启动 Ubuntu 24.04，按提示设置用户名和密码，完成首次初始化。（已完成：用户 `desael3`，`HOME=/home/desael3`）
-- [x] **步骤 3**：在 Ubuntu 终端执行 `sudo apt update`（更新软件源索引）。（已完成）
-- [x] **步骤 4**：执行 `sudo apt upgrade -y`（升级已装包到最新）。（已完成：0 待升级）
-- [x] **步骤 5**：执行 `sudo apt install -y git`（安装版本控制工具 git）。（已完成：2.43.0）
-- [x] **步骤 6**：执行 `sudo apt install -y curl`（安装下载工具 curl）。（已完成：8.5.0）
-- [x] **步骤 7**：执行 `sudo apt install -y wget`（安装备用下载工具 wget）。（已完成：1.21.4）
-- [x] **步骤 8**：执行 `sudo apt install -y build-essential`（安装 GCC/Make 等基础编译工具）。（已完成：gcc 13.3.0）
-- [x] **步骤 9**：执行 `sudo apt install -y cmake`（安装 CMake 构建工具）。（已完成：3.28.3）
+### 0.2 程序栈与语言分工
+| 语言 | 负责内容 |
+|------|----------|
+| **ASM (NASM)** | 引导启动桩、CPU 模式切换、GDT/IDT 早期设置、上下文切换、系统调用入口 |
+| **C** | 内核核心：内存管理、中断、调度、驱动、兼容层核心（PE/ELF 加载、系统调用转发） |
+| **C++** | 用户态框架、GUI 控件库、窗口管理器、包管理前端 |
+| **Python** | 构建脚本、ISO 打包、帮助文档生成、包管理器逻辑、自动化测试 |
 
-### 1.2 安装 Rust 工具链（内核主语言）
-> 说明：经检查，Windows 侧已存在 Rust（`rustc 1.99.1` / `cargo 1.99.1` / `rustup 1.29.1`），WSL 内无。按「已有则不重复安装」原则，**直接复用 Windows 工具链**，内核构建改为在 Windows 侧进行（无需在 WSL 内再装一份）。
-- [x] **步骤 10**：下载并运行 rustup 安装脚本。（已完成：Windows 已装 rustup 1.29.1）
-- [x] **步骤 11**：在提示中选 `1) Default installation`。（已完成）
-- [x] **步骤 12**：`source "$HOME/.cargo/env"` / 确保 PATH 含 cargo。（已完成：Windows PATH 已含）
-- [x] **步骤 13**：`rustup toolchain install nightly`。（已完成：nightly 已装）
-- [x] **步骤 14**：固定 nightly 工具链。（已完成：改用项目内 `rust-toolchain.toml` 指定 `channel = "nightly"`，不改全局默认，保留 stable 用于其它项目）
-- [x] **步骤 15**：`rustup component add rust-src`。（已完成，已加至 nightly）
-- [x] **步骤 16**：`rustup target add x86_64-unknown-none`。（已完成，已加至 nightly）
-- [x] **步骤 17**：`rustup component add llvm-tools-preview`。（已完成，已加至 nightly）
-- [x] **步骤 18**：`cargo install bootimage`。（已完成：bootimage 0.10.5）
-> 注：原后台安装被手动终止后，由用户手动按「项目级 `rust-toolchain.toml`」方案补齐 14/16/17/18。验证：`rustc` 项目内为 1.101.0-nightly；`x86_64-unknown-none` 目标、`llvm-tools`、`rust-src` 均已就位；`bootimage 0.10.5` 可用。
+### 0.3 兼容层总体思路（最重要，先理解再动手）
+- **DEB / APK 都最终跑在“类 Linux 环境”上** → 先做 **ELF 加载器 + Linux 系统调用子集**（这层同时也是 APK 的地基）。
+- **EXE / BAT / CMD / MSI 跑在“类 Windows 环境”上** → 再做 **PE 加载器 + Win32 API 子集**（思路参考 Wine / ReactOS，但不直接复制代码）。
+- **APK** = Android 运行时（ART）跑在上面的“类 Linux 环境”上 → 是最难的一项，列为长期攻坚。
+- 路径规范化：系统内部统一用 `/`，输入时兼容 `\`，在 VFS 层做一次归一化。
 
-### 1.3 安装汇编器与引导相关工具
-- [x] **步骤 19**：执行 `sudo apt install -y nasm`（安装 NASM，用于写早期引导汇编）。（已完成：NASM 2.16.01，WSL 内已是最新）
-- [x] **步骤 20**：执行 `sudo apt install -y xorriso`（安装 ISO 镜像制作工具）。（已完成：xorriso 1.5.6）
-- [x] **步骤 21**：执行 `sudo apt install -y mtools`（安装 FAT 镜像工具，便于做启动盘）。（已完成：mtools 4.0.43）
-> 注：nasm/xorriso/mtools 均装在 **WSL(Ubuntu)**。由于内核用 Windows 侧 Rust 编译、ISO 用 WSL 侧 xorriso/mtools 打包，阶段 A 需注意把 Windows 编译出的内核二进制传入 WSL 再打包（或后续统一构建环境）。
-- [x] **步骤 22**：下载最新 **limine-*.tar.xz**。（已完成：v12.9.6，用 `wget` 拉取并解压至 WSL `/tmp`）
-- [x] **步骤 23**：在 Ubuntu 中解压并执行 `./configure && make`。（已完成：Limine 12.9.6 编译成功）
-- [x] **步骤 24**：执行 `sudo make install`。（已完成：`/usr/local/bin/limine` 可用，`limine --version` = 12.9.6）
-
-### 1.4 安装模拟器（用于本机测试内核）
-- [x] **步骤 25**：在 Windows 侧下载并安装 **QEMU for Windows**，安装到 **D 盘**并加入系统 **PATH**。（已完成：用户手动安装至 `D:\Program Files\qemu`，QEMU 11.1.0）
-- [x] **步骤 26**：【已确认】**不**在 WSL/Ubuntu 内安装 QEMU。原因：WSL 暂不支持窗口显示，图形化测试无法出窗；统一使用 **Windows 版 QEMU** 来启动内核 ISO（GUI 测试在 Windows 侧进行）。若仅做无头(headless)验证，仍用 Windows 版并加 `-display none` 参数。
-- [x] **步骤 27**：在 **Windows 的 PowerShell**（非 WSL）中验证：`qemu-system-x86_64 --version`。（已完成：QEMU emulator version 11.1.0）
-
-### 1.5 安装辅助脚本与编辑器
-- [x] **步骤 28**：Python（构建/打包脚本用）。（已完成：Windows 已装 **Python 3.11.9**，无需在 WSL 重复安装；若阶段 A 的 WSL 脚本需要 python3 再补装）
-- [x] **步骤 29**：`ripgrep` + `fd-find`。（已完成：WSL 内 `rg 14.1.0` / `fdfind 9.0.0`）
-- [x] **步骤 30**：Windows 侧 **VS Code** + **Remote - WSL** 扩展。（已完成：VS Code 1.144.0 位于 `D:\Programs\Microsoft VS Code`，Remote-WSL v1.104.7 已装）
-- [x] **步骤 31**：VS Code 扩展 **rust-analyzer**。（已完成：v0.3.3097 已装）
-
-### 1.6 建立代码仓库
-- **步骤 32**：在 GitHub 新建仓库 **DesOS**（私有或公开自选）。
-- **步骤 33**：在 Ubuntu 执行 `mkdir -p ~/desos && cd ~/desos && git init`（本地建仓）。
-- **步骤 34**：执行 `git remote add origin <你的仓库地址>`（关联远程）。
-- **步骤 35**：执行 `git commit --allow-empty -m "init desos"` 然后 `git push -u origin main`（完成首次提交）。
-
-### 1.7 安装持续集成（可选但强烈建议）
-- **步骤 36**：在仓库根目录新建 `.github/workflows/build.yml`，内容写「每次 push 自动用 Ubuntu + Rust nightly 编译内核」。
-- **步骤 37**：把该文件提交并 push，到 GitHub Actions 页面确认首次 CI 跑绿。
-
-> ✅ 完成 1.1–1.7 后，你的「工具箱」已就绪：能写 Rust 裸机内核、能用 NASM 写引导、能用 Limine 引导、能用 QEMU 测试、能用 git 管理。
+### 0.4 里程碑（用来判断进度）
+- **M1**：能进内核并在 QEMU 里看到 DesOS 启动字样 ✅ **已达成**（阶段 A 全部完成，详见 A.7 验收记录）
+- **M2**：内核能加载并运行一个用户态程序 ✅ **已达成**（B.10：静态 ELF64 加载 + 独立用户 PML4 + `iretq` 进 ring3 + `int 0x80` 系统调用；实测串口输出 `Hello from DesOS userland (ring3)!`，详见「B 阶段第四批验收记录」）
+- **M3**：能运行一个 Linux `DEB` 程序（经兼容层）
+- **M4**：能运行一个 Windows `EXE`（经兼容层）
+- **M5**：自带圆润图形界面可用
+- **M6**：能运行 `APK`（长期）
 
 ---
 
-## 2. 程序栈与技术选型（我已替你决定）
+## 阶段 0：环境准备（工具下载与安装）
 
-| 层级 | 选型 | 理由 |
-|---|---|---|
-| 引导 | **Limine** | 现代、轻量、文档友好，支持 x86_64 裸机内核 |
-| 内核语言 | **Rust（`#![no_std]`）+ 少量 x86_64 汇编** | 内存安全，减少内核级漏洞 |
-| 内核模型 | **混合内核（宏内核骨架 + 用户态 personality 服务）** | 兼顾性能与兼容层隔离 |
-| 目标架构 | `x86_64-unknown-none`（裸机） | 电脑优先 |
-| 构建 | `cargo` + 自定义 `build.rs` + `bootimage` | 自动化生成可启动镜像 |
-| 显示 | 先 **VESA/线性帧缓冲（framebuffer）**，后接 GPU 驱动 | 先能画，再优化 |
-| 窗口/UI | 自研 **合成器（compositor）+ 软圆角控件库** | 实现「圆滑/软」风格 |
-| 字体 | **FreeType** 移植到内核/用户态 | 清晰文本渲染 |
-| 文件系统 | 自有 **DesFS**（同时兼容 FAT32/ext2 读写） | 自带生态 + 互通 |
-| CLI | 自研 **`dsh`**（DesOS Shell），带 `--help` 友好说明 | 目标 3 |
-| 软件包 | 自有 **`.desos`** 包格式 + `dpkg` 思路的 `dpm` 包管理器 | 目标 8 |
-| 兼容层 | **Linux ABI 子集 → Wine 思路的 Win32 → Android Runtime 子集** | 目标 1，分阶段 |
-| 电源 | **ACPI + CPU 空闲状态(C-states)/节能调度** | 目标 5 |
-| 更新 | **A/B 双分区 + 静默后台 + 可回滚** | 目标 6 |
-| 权限 | **Capabilities + 四档用户模型** | 目标 7 |
+> 原则：每一步只做一件最小的事。能复用已有的就不重新装。验证一律看版本号。
 
----
+- [x] **0.1 [Win]** 确认 Windows 已装 Git。→ `git version 2.53.0.windows.1` ✅
+- [x] **0.2 [Win]** 确认 WSL2 + Ubuntu 24.04 已装。→ `Ubuntu-24.04 Running 2` ✅
+- [x] **0.3 [WSL]** 更新软件源。`sudo apt-get update` 已执行 ✅（列表已刷新）
+- [x] **0.4 [WSL]** 升级已装包。`sudo apt-get upgrade -y` 已执行 ✅（`apt list --upgradable` = 0）
+- [x] **0.5 [WSL]** 安装 `gcc`。→ `gcc 13.3.0` ✅
+- [x] **0.6 [WSL]** 安装 `make`。→ `GNU Make 4.3` ✅
+- [x] **0.7 [WSL]** 安装 `binutils`。→ `ld (GNU Binutils) 2.42` ✅
+- [x] **0.8 [WSL]** 安装 `nasm`。→ `NASM 2.16.01` ✅
+- [x] **0.9 [WSL]** 安装 `xorriso`。→ `xorriso 1.5.6` ✅
+- [x] **0.10 [WSL]** 安装 `mtools`。→ `mtools 4.0.43` ✅
+- [x] **0.11 [WSL]** 安装 `git`（WSL 侧）。→ `git 2.43.0` ✅
+- [x] **0.12 [WSL]** 安装 `python3` + `pip`。→ `python3 3.12.3` / `pip 24.0` ✅
+- [x] **0.13 [WSL]** 安装 `gdb`（配合 QEMU 远程调试）。→ `GNU gdb 15.1` ✅
+- [x] **0.14 [WSL]** 安装 `build-essential`（一批构建依赖）。→ `Status: install ok installed` ✅
+- [x] **0.15 [Win]** QEMU Windows 安装包已装（免下载）。验证：`qemu-system-x86_64 --version` → `QEMU 11.1.0` ✅
+- [x] **0.16 [Win]** QEMU 已装在 D 盘（免下载）。✅
+- [x] **0.17 [Win]** `D:\QEMU` 已在 PATH。→ 验证 `QEMU 11.1.0` ✅
+- [x] **0.18 [Win]** Python Windows 安装包已装（免下载）。→ `Python 3.11.9` ✅
+- [x] **0.19 [Win]** Python 已装并加入 PATH。✅
+- [x] **0.20 [Win]** VSCode 安装包已装（免下载）。→ `1.144.0` ✅
+- [x] **0.21 [Win]** VSCode 已装在 D 盘。✅
+- [x] **0.22 [Win]** VSCode 扩展已装：`C/C++`、`x86 and x86_64 Assembly`、`Python`、`Remote - WSL` ✅
+- [x] **0.23 [WSL]** 下载 Limine 引导源码（官方 tarball，用 `wget`）。→ `limine-12.9.6.tar.xz`（813824 字节，已校验为有效 XZ，含标准源码树）✅
+- [x] **0.24 [WSL]** 解压 Limine 源码。→ `tools/limine/limine-12.9.6/` ✅
+  - **工作目录清理后**该目录只保留构建必需文件：`bin/` 的 `limine` / `limine-bios.sys` / `limine-bios-cd.bin` / `limine-uefi-cd.bin` / `BOOTX64.EFI`，以及 `limine-protocol/include/limine.h`；完整源码仍在 `tools/limine/limine-12.9.6.tar.xz`，需要重编时先解压再跑 `tools/limine/build_limine.sh`（脚本会自动解压）。
+- [x] **0.25 [WSL]** 配置 Limine：`./configure`。→ 默认会关 BIOS（`LIMINE_NO_BIOS`），已加 `--enable-bios --enable-bios-cd --enable-uefi-x86-64 --enable-uefi-cd`（项目 A.7 用 `qemu -cdrom` 需 BIOS）✅
+- [x] **0.26 [WSL]** 编译 Limine：`make`。→ 生成 `bin/limine` 及引导文件（`limine-bios.sys` / `limine-bios-cd.bin` / `limine-uefi-cd.bin` 等）✅
+- [ ] **0.27 [WSL]** 安装 Limine：`sudo -S make install` → 验证 `limine --version`
+- [x] **0.28 [WSL]** 下载 `binutils` 源码。→ 工具链已就绪（`~/opt/cross/bin` 已有）✅
+- [x] **0.29 [WSL]** 解压 `binutils` 源码。✅
+- [x] **0.30 [WSL]** 配置 binutils 为 `x86_64-elf` 目标。✅
+- [x] **0.31 [WSL]** 编译 binutils：`make`。✅
+- [x] **0.32 [WSL]** 安装 binutils：`make install` → `x86_64-elf-ld --version` ✅
+- [x] **0.33 [WSL]** 下载 `gcc` 源码（仅 C）。✅
+- [x] **0.34 [WSL]** 解压 `gcc` 源码。✅
+- [x] **0.35 [WSL]** 配置 gcc 为 `x86_64-elf`。✅
+- [x] **0.36 [WSL]** 编译 gcc：`make all-gcc`。✅
+- [x] **0.37 [WSL]** 安装 gcc：`make install-gcc` → `x86_64-elf-gcc --version` ✅（GCC 14.2.0 @ ~/opt/cross/bin）
+- [x] **0.38** 建立项目目录骨架：`kernel/asm`、`kernel/src`、`kernel/inc`、`tools/`、`docs/`。✅
+- [x] **0.39** 编写 `.gitignore`。✅
 
-## 3. 阶段 A：让内核「启动并说话」（最小可运行系统）
-
-> 目标：Limine 引导 → 进入 Rust 内核 → 在屏幕上打印 "Hello, DesOS" → 能用键盘输入、能在 QEMU 里跑。
-
-- **步骤 A1**：在 `~/desos` 下用 `cargo new --bin kernel` 建立内核 crate。
-- **步骤 A2**：修改 `kernel/Cargo.toml`，加入 `#![no_std]`、`#![no_main]` 与 `panic_handler`。
-- **步骤 A3**：写 `kernel/src/main.rs` 的 `_start` 入口（Limine 约定的栈帧）。
-- **步骤 A4**：用 NASM 写 `boot.asm`：设置栈、长模式（64 位）、调用 Rust 的 `kmain`。
-- **步骤 A5**：实现最简 **VGA 文本/帧缓冲打印** 函数（先输出一行字）。
-- **步骤 A6**：写 `limine.conf` 指向内核镜像，并用 `bootimage`/`xorriso` 打成 ISO。
-- **步骤 A7**：用 QEMU 启动 ISO，确认看到 "Hello, DesOS"。
-- **步骤 A8**：实现 **PS/2 键盘驱动**，把按键回显到屏幕（最简 shell 雏形）。
-- **步骤 A9**：建立 `Makefile`/`build.sh` 一键 `build + run`。
-
-> ✅ 阶段 A 完成标准：QEMU 里能看到内核输出，并能用键盘敲字符。
-
----
-
-## 4. 阶段 B：图形、窗口与「软 UI」
-
-- **步骤 B1**：初始化 **帧缓冲（framebuffer）** 图形模式（如 1920×1080）。
-- **步骤 B2**：实现基础 **2D 绘图原语**（画点/线/矩形/圆角矩形/填充）。
-- **步骤 B3**：移植 **FreeType**，能渲染 TTF 字体。
-- **步骤 B4**：实现 **窗口管理器/compositor**（窗口、标题栏、圆角、阴影）。
-- **步骤 B5**：实现 **鼠标驱动**（USB/PS2），支持拖动窗口。
-- **步骤 B6**：做一套 **「软 UI」控件库**（圆角按钮、柔和阴影、半透明、动画过渡）。
-- **步骤 B7**：实现 **桌面环境 DesDE**（任务栏、开始菜单雏形、通知区）。
-- **步骤 B8**：把 CLI（`dsh`）做成一个**全屏/浮动终端窗口**，而非纯文本模式。
-
-> ✅ 阶段 B 完成标准：能看到带圆角窗口的桌面，可拖动窗口，能在终端窗口里敲命令。
+> 备注：交叉工具链已完成（`x86_64-elf-gcc 14.2.0`）。后续内核即用此工具链编译，不再需主机 `gcc -ffreestanding` 顶替方案。
 
 ---
 
-## 5. 阶段 C：自有软件生态（.desos 与路径规则）
+## 阶段 A：引导与内核骨架（目标 M1）
 
-- **步骤 C1**：定义 **`.desos` 包格式**（元数据 + 可执行 + 资源），用 `tar.zst` 容器。
-- **步骤 C2**：写 **`dpm`（DesOS Package Manager）**：安装/卸载/查询/升级。
-- **步骤 C3**：实现 **路径抽象层**：内核与 shell 同时识别 `/` 与 `\`，统一归一化为内部表示（目标 8）。
-- **步骤 C4**：定义 **可执行后缀**：如 `.dexec`（原生）、`.dsh`（脚本）、`.desos`（打包应用）。
-- **步骤 C5**：做一个 **软件中心** UI（基于阶段 B 的控件库）。
-- **步骤 C6**：用 `dpm` 发布 3 个示例程序（计算器/记事本/终端），验证完整闭环。
+- [x] **A.1** 写 Limine 配置文件 `limine.conf`（设置启动项指向内核、framebuffer 分辨率）。→ 项目根 `limine.conf`。⚠️ **Limine 12.x 配置语法已改**：选项必须是 `option: value`（冒号，不是 `=`）、菜单项以 `/` 开头（不是 `:`）、注释必须单独成行、全局项须在首个菜单项之前、行尾必须 LF（选项名本身不区分大小写）。现为 `timeout: 3` / `verbose: yes` / `serial: yes` / `default_entry: 1` + `/DesOS` 条目（`protocol: limine`、`path: boot():/kernel.elf`、`resolution: 1024x768x32`）✅
+- [x] **A.2 [ASM]** 写启动桩 `boot.asm`：建立栈、把控制权交给 `kernel_main`。→ `kernel/asm/boot.asm`（`extern kernel_main`，BSS 内 64KiB 更高半栈；`nasm -f elf64` 验证通过）。HHDM 由 Limine 开启，桩内无需设页表 ✅
+- [x] **A.3 [C]** 写内核入口 `kernel_main.c`：串口 + 帧缓冲输出 `DesOS boot OK`。→ `kernel/src/kernel_main.c`（用帧缓冲 `red/green/blue_mask_shift` 拼像素色；5x7 极小点阵字体）。⚠️ **Limine 请求段不能叫 `.limine_reqs`**：base revision 0 下 Limine 会按已废弃机制把该名字的段解释为「请求指针数组」，触发 `PANIC: limine: .limine_reqs entry outside kernel image` 而拒绝引导。现用 `.limine_reqs_data` 段 + **base revision 1**（tag 放在 start/end 分隔符之间）✅
+- [x] **A.4** 写链接脚本 `kernel.ld`（定义内核加载地址、段布局）。→ `kernel/kernel.ld`（`ENTRY(_start)`、VMA 基址 `0xFFFFFFFF80000000`、**`.text : AT(0x100000)` 让 LMA 落到低位物理地址**、`KEEP(.limine_reqs_data)`、`.bss` 并入可写 LOAD 段（**不能 `NOLOAD`**，否则压栈 #PF）、4K 对齐、`/DISCARD/` 丢无用段）。实测 `kernel.elf`：入口 `0xffffffff80000000`，2 个 LOAD 段（VMA 更高半 / LMA 低位），`memsz > filesz` ✅（注：C 须 `-mcmodel=kernel -mno-red-zone`，见 A.5）
+- [x] **A.5** 写构建脚本（`tools/build_kernel.py` 或 `Makefile`）：NASM 编 asm + gcc 编 c → 链接成 `kernel.elf`。→ `tools/build_kernel.py`（nasm 编 `kernel/asm/boot.asm`，交叉 `x86_64-elf-gcc` 编 `kernel/src/*.c`，用 `kernel/kernel.ld` 链接；C 旗标含 `-mcmodel=kernel -mno-red-zone`；交叉链解析不到 PATH 时回退 `~/opt/cross/bin`）。产物 `build/kernel.elf` ✅
+- [x] **A.6 [WSL]** 写 ISO 打包脚本。→ `tools/make_iso.sh`（调 `build_kernel.py` + `build_iso.py`）；`tools/build_iso.py` 用 `xorriso` 生成 BIOS/UEFI 混合 ISO、`-boot-load-size` 按 `limine-bios-cd.bin` 实际大小计算（56 扇区，避免启动镜像被截断）、`limine bios-install` 写引导代码，并把 `limine.conf` **统一转成 LF**（CRLF 会让选项值带上 `\r` 而失效）。产物 `build/DesOS.iso` ✅
+- [x] **A.7 [Win]** 用 Windows 版 QEMU 启动 ISO。→ `tools/run_qemu_test.ps1`（`-nographic` 把 COM1 接到 stdout、自动判定 `DesOS boot OK`）。**QEMU 11.1.0 实测 PASS**：`limine: ELF entry point: 0xffffffff80000000` / `Base revision: 1` / `Requests count: 1` / `DesOS boot OK`；WSL QEMU 8.2.2 交叉验证同样通过；帧缓冲亦绘出 `DesOS boot OK`。看画面用 `tools/run_desos_window.cmd`（`-display gtk`），看串口日志用 `tools/run_desos_serial.cmd` ✅
+- [x] **A.8 [C]** 加串口日志 `serial.c`（输出到 `COM1` 0x3F8，轮询 LSR 的 THR 空位）。→ `kernel/src/serial.c` + `kernel/inc/serial.h`；`serial_init()` 在 QEMU 环境下会卡在 LSR 等待，故 `kernel_main` 直接发（SeaBIOS 已设好 115200 8N1）✅
 
----
+### A.7 验收记录（M1，2026-11-07）
 
-## 6. 阶段 D：Linux 兼容层（先打通 DEB 与命令行）
+- 权威环境 **Windows QEMU 11.1.0**：`RESULT: PASS`，串口完整链路为 Limine 菜单 3 秒倒计时 → `Loading executable \`boot():/kernel.elf\`` → `ELF entry point` / `Base revision: 1` / `Requests count: 1` → `DesOS boot OK`。
+- 交叉验证 **WSL QEMU 8.2.2**：同样输出 `DesOS boot OK`。
+- 图形窗口 `-display gtk` 实测可用（1024x768x32），画面为深蓝底 + `DesOS boot OK` 点阵字。
+- 复现命令：`wsl bash -c "bash /mnt/e/Mine/A_Desael3/DesOS/tools/make_iso.sh"`，再跑 `powershell -File tools\run_qemu_test.ps1`。
+- **仍不能交互**：内核打印后进入 `hlt` 循环，没有键盘/串口输入驱动、没有 shell。要「能敲命令」需先做 B.5/B.6（IDT/中断）、C.1（键盘）、B.11（最小 Shell）。
 
-- **步骤 D1**：实现 **Linux 系统调用子集**（在用户态做 syscall 翻译层）。
-- **步骤 D2**：移植 **`musl`/部分 `glibc`** 到该层，让 Linux 二进制能动态链接。
-- **步骤 D3**：移植 **`dpkg` + `apt`** 思路，能解析并安装 `.deb` 包。
-- **步骤 D4**：先跑通 **Linux CLI 工具**（如 `coreutils` 子集、`bash`）。
-- **步骤 D5**：验证 1–2 个常见 DEB 包安装并可运行。
+### A 阶段踩过的坑（排障备忘）
 
-> 说明：Android（阶段 F）也依赖 Linux ABI，所以这一步是地基。
-
----
-
-## 7. 阶段 E：Windows 兼容层（EXE / BAT / CMD / MSI）
-
-- **步骤 E1**：实现 **PE 加载器**（解析 EXE/DLL 头、重定位、导入表）。
-- **步骤 E2**：实现 **Win32 API 子集**（窗口、GDI、文件、进程、注册表桩）。
-- **步骤 E3**：移植/借鉴 **Wine** 的用户态实现（作为兼容层，而非重写）。
-- **步骤 E4**：实现 **BAT/CMD 解释器**（命令解释 + 流程控制）。
-- **步骤 E5**：实现 **MSI 安装器**（解析 Windows Installer 数据库并映射到 `dpm`/DesFS）。
-- **步骤 E6**：先跑通几个简单 EXE（如记事本类、命令行工具），再逐步扩大覆盖。
+1. **配置语法（最主要）**：`=` 分隔符、`:DesOS` 菜单项、行内注释、CRLF 行尾——都会让 Limine 12.x 解析不到选项/条目，表现为停在菜单（默认 5 秒倒计时）、报 `Default entry is not valid`，根本不加载内核。判断依据：串口出现 `Booting automatically in 5...` 就是配置没解析。注意**选项名不区分大小写**（CONFIG.md 明确），改大小写不解决问题。
+2. **`.limine_reqs` 段名**：触发 base revision 0 的废弃机制 → panic 且不引导。改名 + 升 base revision 1 解决。
+3. **`.bss` 用 `NOLOAD`**：Limine 不映射该段，`call kernel_main` 压栈即 #PF → 三重错误。
+4. **LMA = 更高半 VMA**：物理载入地址不合法。用 `AT(0x100000)` 修正。
+5. **ISO 启动镜像截断**：`-boot-load-size 4` 只拷 2048 字节，SeaBIOS 加载不了 Limine；按实际大小设 56。
+6. **排障方法**：`serial: yes` + `-nographic` 可把 Limine 引导日志/panic 打到串口；`-display none` + monitor `screendump` 抓帧缓冲转 PNG，可「读」出只显示在 VGA 上的错误。
 
 ---
 
-## 8. 阶段 F：Android 兼容层（APK）
+## 阶段 B：内核核心
 
-- **步骤 F1**：在阶段 D 的 Linux ABI 之上，实现 **Android 特有系统调用/服务（binder、ashmem 等）**。
-- **步骤 F2**：移植 **ART（Android Runtime）** 或兼容的 Dalvik 执行环境。
-- **步骤 F3**：实现 **APK 安装器**（解包、签名校验、映射到 `dpm`）。
-- **步骤 F4**：实现 **Android 界面桥接**（把 Android View 渲染到 DesOS 合成器）。
-- **步骤 F5**：先跑通 1–2 个简单 APK。
+- [x] **B.1** 物理内存管理：页帧分配器（bitmap / 链表）。→ `kernel/inc/pmm.h` + `kernel/src/pmm.c`。`kernel_main.c` 新增 `LIMINE_MEMMAP_REQUEST` / `LIMINE_HHDM_REQUEST`（请求数变 3）；只管理 `LIMINE_MEMMAP_USABLE` 页，bitmap 按「最大 usable 物理地址」定长、放进 usable 区并保留自身占用页与 pfn 0；提供 `pmm_alloc_frame(s)` / `pmm_free_frame(s)` / 统计接口。QEMU 512M 实测约 13 万 usable 页（510 MiB），bitmap 16 KiB ✅
+- [x] **B.2** 虚拟内存：分页（4 级页表）、内核空间映射。→ `kernel/inc/vmm.h` + `kernel/src/vmm.c`。不推倒 Limine 已建好的页表，而是接管 `CR3` 指向的 PML4：经 HHDM 读写页表页，`vmm_get_phys` 支持 1GiB/2MiB 大页查询，按需向 PMM 取页建 PDPT/PD/PT 并 `vmm_map` / `vmm_unmap` + `invlpg`；内核更高半镜像与 HHDM 由 Limine 映射并验证可读。堆/自检虚拟区间划在空白 PML4 项 400/402（`0xFFFFC80000000000` / `0xFFFFC90000000000`），避开已有映射 ✅
+- [x] **B.3** 内核堆：实现 `kmalloc` / `kfree`。→ `kernel/inc/heap.h` + `kernel/src/heap.c`（16 字节对齐、按虚拟地址有序的双向块链表、首次适配 + 拆分 + 相邻合并、`kcalloc`，上限 64 MiB；按需向 B.1 申请物理页、由 B.2 映射，失败回滚）。同期补基础设施：`kprintf`（串口格式化）、`kstring`（freestanding 的 `memset`/`memcpy` 等），`build_kernel.py` 加 `-fno-builtin` ✅
+- [x] **B.4** 段表 GDT 与 TSS（用户态切换需要）。→ `kernel/inc/gdt.h` + `kernel/src/gdt.c` + `kernel/asm/gdt.asm`。替换 Limine 临时 GDT：7 项平坦段（kernel code/data、user data/code、64 位 TSS 描述符），`lgdt` 后用 **`retfq`（48 CB）** 远返回重载 `CS=0x08`、`ltr` 装 `TR=0x28`；TSS 带 `rsp0`（ring3→ring0 栈）与 `IST1`（#DF/#PF 专用栈）。用户态选择子先备好给 B.9/B.10。实测 `CS=0x8 TR=0x28` ✅
+- [x] **B.5** 中断：IDT、异常向量、缺页处理。→ `kernel/inc/idt.h` + `kernel/src/idt.c` + `kernel/asm/idt_stubs.asm`（48 个向量桩统一栈帧：CPU 是否自动压错误码分开处理，公共入口保存 15 个通用寄存器后调 C 分发）。256 项 IDT，异常 0-31 带名字/错误码/RIP 诊断，`#DF`/`#PF` 走 IST1；**#PF 实现按需映射**：指定地址缺页时分配物理页 + `vmm_map`，`iretq` 后重试指令成功。`int3` 验证异常返回链路 ✅
+- [x] **B.6a** 中断控制器（先 PIC）：8259A 重映射 IRQ0-15 → 向量 32-47、EOI、IMR 掩码。→ `kernel/inc/pic.h` + `kernel/src/pic.c`；PIT ch0 仅作验证中断源（1000 Hz）。自检 `sti` 后 `hlt` 等到 3 次 IRQ0（`imr=0xfe/0xff irq0=3`）✅
+- [x] **B.6b** 切换到 APIC（LAPIC + IOAPIC，多核准备）。→ `kernel/inc/apic.h` + `kernel/src/apic.c`。`kernel_main.c` 新增 `LIMINE_RSDP_REQUEST`（请求数变 4）；解析 RSDP → XSDT/RSDT → MADT，取 LAPIC/IOAPIC 物理基址、`Interrupt Source Override`（QEMU 上 IRQ0 → GSI 2）、`PCAT_COMPAT` 标志；用 `vmm_map(..., VMM_PCD)` 把两块 MMIO 映到 PML4[401] 的专用高半地址；以 `IA32_APIC_BASE` MSR 打开 APIC、屏蔽全部 LVT、设 SVR（伪中断向量 0x2F 复用 IRQ15 桩）；IOAPIC 先屏蔽全部 24 个引脚，再把 PIT/键盘路由到向量 32/33（physical destination = BSP LAPIC ID）；最后屏蔽 8259A 并经 IMCR 把 INTR 切到 APIC。`idt.c` 的 IRQ 分支按 `apic_enabled()` 改发 LAPIC EOI。**切换后 B.7–B.11 全部在 APIC 模式下真实跑通**；验证失败会 `apic_fallback_to_pic()` 回退，不拖垮后续链路 ✅
+- [x] **B.7** 定时器 + 调度器：先协作式，再抢占式（时间片）。→ `kernel/inc/timer.h` + `kernel/src/timer.c`（PIT tick 计数、时间片到期 `sched_request()`）、`kernel/inc/sched.h` + `kernel/src/sched.c`（round-robin 就绪队列）。**抢占切换点唯一放在 `isr_common` 的「handler 返回后、恢复寄存器前」**：`sched_switch_from_irq(cur_rsp)` 返回下一线程 rsp，两者栈布局完全一致，后续 `pop...iretq` 可直接复用；协作式让出走 `SYS_YIELD`。实测 PIT 100 Hz 下 A/B 线程按时间片交替执行 ✅
+- [x] **B.8** 进程/线程模型：PCB/TCB、上下文结构。→ `kernel/inc/thread.h` + `kernel/src/thread.c`。`struct thread` 含 `rsp`/独立内核栈/`cr3`/状态/id/entry/arg；`thread_create()` 用 `kmalloc` 分配 16 KiB 栈，并在栈顶构造一份完整「中断帧」（`rip=thread_bootstrap`、IF=1、模拟 `call` 后的 rsp 对齐），使首次调度即可由统一 `iretq` 路径启动；`thread_exit()` 走 `SYS_EXIT` 标记 DEAD 并让出。当前所有线程共用内核 PML4，地址空间分离留到 B.10 ✅
+- [x] **B.9** 系统调用接口：统一入口（asm 桩 → 分发表）。→ `kernel/inc/syscall.h` + `kernel/src/syscall.c` + `idt_stubs.asm` 的 `isr_stub_128`。用 `int 0x80`（IDT 向量 128、**DPL=3** 门，将来 ring3 也能调用），约定 `rax`=调用号、`rdi/rsi/rdx`=参数，返回值写回栈帧 `rax`；已注册 `SYS_WRITE` / `SYS_YIELD` / `SYS_EXIT` / `SYS_GET_TICKS` / `SYS_GETPID`。自检覆盖正常调用、未知调用号返回 -1 ✅
+- [x] **B.10** 用户态 ELF 加载器（M2 基础）。→ `kernel/inc/elf.h` + `kernel/src/elf.c`，用户程序 `user/hello.c` / `user/linker.ld` / `tools/build_user.py`（静态 ELF64，`ENTRY(_start)`，加载地址 `0x400000`，NASM `incbin` 内嵌进内核 `.rodata`）。加载器校验 ELF header、逐页复制 `PT_LOAD`、用 `vmm_create_user_pml4()`（只复制更高半 PML4 项）与 `vmm_map_user()` 建独立用户地址空间，另映射 4 页用户栈；`thread_create_user()` 构造 `cs=0x23 / ss=0x1B / rflags=0x202` 的初始中断帧，调度时切 `CR3` + 更新 `TSS.rsp0`，统一 `iretq` 降权到 ring3。用户程序用 `int 0x80` 的 `SYS_WRITE` 打印、`SYS_EXIT` 退出。实测 `ring3-calls=2`，输出 `Hello from DesOS userland (ring3)!` ✅
+- [x] **B.11** 最小 Shell（内核态），能读命令、打印回显。→ `kernel/inc/shell.h` + `kernel/src/shell.c`，输入 `serial.c` 的 COM1 轮询 + `kbd.c` 的 PS/2 键盘 IRQ1（C.1 最小子集），统一进 256 字节环形缓冲；行编辑支持可打印字符回显、退格、回车执行；内建命令 `help / echo / mem / ticks / pid / threads / run / version / clear / halt`，其中 `run` 联动 B.10 真正拉起用户态程序。`shell_run()` 打开 PIT/IRQ1 后进入 `sti + hlt` 交互主循环 ✅
+
+### B 阶段首批验收记录（B.1–B.3，2026-11-07）
+
+- 自检代码 `kernel/src/b_selftest.c`：由 `kernel_main` 在 M1 帧缓冲画面之后依次跑 B.1（单页/连续页分配 + HHDM 写读 + 释放计数复原）、B.2（内核文本与 HHDM 反查 + 新映射写读 + 解映射）、B.3（多块写读隔离 + 释放复用 + 1 MiB 大分配触发堆增长），全部真分配/真写入/真读回/真释放，结果打到 COM1。
+- 权威环境 **Windows QEMU 11.1.0**（`-m 512M -nographic -no-reboot`）：`RESULT: PASS`。串口链路 `Requests count: 3` → `DesOS boot OK` → `[B.1] usable=130679 pages (510 MiB)`（数值随内核镜像大小略变）→ `[B.2] kernel va 0xffffffff800027c6 -> phys 0x...` → `[B.2] map 0xffffc90000000000 -> ..., readback=0x00c0ffee12345678` → `[B.1]/[B.2]/[B.3] selftest: PASS` → `B-STAGE: PASS (failed=0)`（堆按需映射 1040 KiB）。
+- 新增 `tools/run_qemu_btest.ps1`（逐项判定 M1 boot / B.1 / B.2 / B.3 / 总标记，日志 `build/b_selftest_qemu.log`）与可见窗口入口 `tools/run_desos_btest.cmd`；原 `tools/run_qemu_test.ps1` 的 M1 判定继续可用。
+- 复现命令：`wsl bash -c "bash /mnt/e/Mine/A_Desael3/DesOS/tools/make_iso.sh"`，再跑 `powershell -ExecutionPolicy Bypass -File tools\run_qemu_btest.ps1`。
+- **当时仍不能交互**：B.4–B.11 未做（GDT/TSS、IDT/异常、PIC/APIC、调度器、进程、系统调用、ELF 加载器、Shell）；键盘驱动属 C.1。后续进展见下节。
+
+### B 阶段第二批验收记录（B.4 / B.5 / B.6a，2026-11-07）
+
+- `tools/build_kernel.py` 改为汇编 `kernel/asm/*.asm` 全部文件；汇编产物加 `asm_` 前缀，避免与同名 C 源（如 `gdt.asm` / `gdt.c`）的目标文件互相覆盖。
+- 实测 **Windows QEMU 11.1.0**：`RESULT: PASS`（7 项检查全过）。串口链路：
+  `[B.4] GDT base=... limit=55, CS=0x8 TR=0x28, TSS rsp0=... IST1=...` →
+  `[B.5] IDT base=... limit=4095, 48 stubs installed (#DF/#PF use IST1)` →
+  `[B.6] PIC remapped IRQ0-15 -> vectors 32-47, all IRQs masked` →
+  `[B.5] #BP handled ... (returning)` →
+  `[B.5] #PF handled: cr2=0xffffc90000002000 err=0x2 -> demand-mapped` →
+  `[B.6] PIT ch0 1000 Hz` → `[B.6] selftest: PASS (imr=0xfe/0xff irq0=3 ticks=3)` →
+  `[B.1]–[B.6] selftest: PASS` → `B-STAGE: PASS (failed=0)`。
+- 验收脚本 `tools/run_qemu_btest.ps1` 检查项扩到 7 项（M1 + B.1–B.6 + 总标记），日志 `build/b_selftest_qemu.log`；可见窗口入口 `tools/run_desos_btest.cmd`。
+- **B 阶段踩过的坑**：① NASM 的 `mov ds, ax` 实际编码为 `mov ds, eax`（32 位形式），必须先 `mov eax, edx` 清高 16 位，否则加载垃圾选择子 → #GP；② 长模式重载 CS 必须 `retfq`（`48 CB`），`retf`（`CB`）是 32 位远返回，只弹 32 位 RIP/CS；③ NASM 的 `ltr` 只接受 16 位寄存器写法（`ltr di`）；④ 同名 asm/C 源文件产物必须加前缀。
+- **当时仍不能交互**：B.6b（APIC）、B.7–B.11 未做（定时器/调度器、进程、系统调用、ELF 加载器、Shell）；键盘驱动属 C.1。后续进展见下节。
+
+### B 阶段第三批验收记录（B.7 / B.8 / B.9，2026-11-07）
+
+- 本批优先做「通往 M2 的必经链路」，**B.6b（APIC）主动延后**：单核内核暂不需要，且不影响用户态程序加载。
+- `idt_stubs.asm` 的公共入口在 `call isr_common_handler` 之后新增一个切换点：`mov rdi,rsp; call sched_switch_from_irq; mov rsp,rax`。这样所有线程被挂起时都停在同一形态的中断帧上，无需单独的上下文切换汇编，也不用在 PIC 中断处理中途 `iretq`。
+- 实测 **Windows QEMU 11.1.0**：`RESULT: PASS`（10 项检查全过）。串口链路：
+  `[B.6] PIT ch0 100 Hz` → `[B.9] syscall gate int 0x80 (vector 128, DPL=3), 5 calls registered` →
+  `[B.7] preemptive scheduling enabled (PIT 100 Hz)` →
+  `[B.7] worker A/B step=1..3` 交错打印（来回抢占，具体顺序随调度时序略变） →
+  `[B.7] selftest: PASS (ticks=9~10 switches=11~12, time-slice preemption)` →
+  `[B.8] selftest: PASS (threads=2 A=3 B=3, both exited)` →
+  `[B.9] sys_write via int 0x80 OK` → `[B.9] selftest: PASS (vector=0x80 pid=0 registered=5)` →
+  `B-STAGE: PASS (failed=0)`。
+- `tools/run_qemu_btest.ps1` 检查项扩到 10 项，等待时间调到 20 秒（worker 忙等需要）。
+- **仍不能交互**：B.6b（APIC）、B.10（用户态 ELF 加载器）、B.11（最小 Shell）未做；键盘/串口输入属 C.1。要真正「能敲命令」还需 B.10 + B.11 + C.1。（**本条为当时状态，已在第四批解决**）
+
+### B 阶段第四批验收记录（B.10 / B.11 / B.6b，2026-11-07）
+
+- 本批把 B 阶段剩余项一次做完：**B.10 用户态 ELF/ring3**、**B.11 可交互 Shell**、此前主动延后的 **B.6b APIC**。**M2 达成，阶段 B 全部完成**。
+- 实测 **Windows QEMU 11.1.0**（`-m 512M -nographic -no-reboot`）：`RESULT: PASS - B.1-B.11 (incl. B.6b APIC) all self-tests passed`，16 项检查全过。串口关键链路：
+  `Requests count: 4`（新增 RSDP 请求） →
+  `[B.6b] MADT: lapic=0xfee00000 ioapic=0xfec00000 bsp=0 ver=0x14 pins=24 overrides=5 flags=0x1 gsi0=2, PIC disabled` →
+  `[B.6b] selftest: PASS (... irq0+=3 mode=APIC)` →
+  `[B.7] selftest: PASS (ticks=15 switches=17)`（APIC 模式下抢占依旧生效） →
+  `[B.10] ELF loaded: entry=0x40003b rsp=0x7ffffffffff8 segments=1` →
+  `Hello from DesOS userland (ring3)!` → `[B.10] selftest: PASS (ring3-calls=2)` →
+  `DesOS> help / echo / mem / bogus / run / ticks` 的回显与执行 → 第二次 ring3 输出 →
+  `[B.11] selftest: PASS (commands=5 lines=6 run-ring3=2)` → `B-STAGE: PASS (failed=0)` →
+  `[B.11] interactive shell: COM1 serial + PS/2 keyboard (IRQ1)`。
+- 验收脚本 `tools/run_qemu_btest.ps1` 检查项扩到 16 项（新增 B.6b、B.10、ring3 实输出、B.11、交互循环），等待时间 20 秒；`tools/run_desos_btest.cmd` 为可见窗口入口。
+- **B.6b 是真实切换，不是只解析 ACPI 就打 PASS**：自检读回 IOAPIC 重定向表（PIT→向量 32、键盘→33、未屏蔽）、确认 `IMR=0xff/0xff`（PIC 已屏蔽），再 `sti` 让 PIT 经 IOAPIC 连续投递 3 次 IRQ0——若 LAPIC EOI 没写对，第 2/3 次不会到达。B.7–B.11 也全部在 APIC 模式下跑完。
+- **B.11 输入链路**：自检用 `shell_inject()` 走完整「输入→回显→解析执行」，`run` 命令真拉起 B.10 用户程序（`run-ring3=2`），键盘路径用 `kbd_inject_scancode(0x1C)`（Enter）走与 IRQ1 handler 同一条 scancode 映射提交命令。真实按键需在有窗口/串口输入的 QEMU 里敲（`tools/run_desos_serial.cmd`），`-nographic` 自动验收无法注入按键。
+- **本批踩过的坑**：① 用户栈 4 页若从 `0x7FFFFFFFD000` 起，第 4 页落进 `0x0000800000000000`（低半 canonical 上界之外 / PML4[256] 的 HHDM），`vmm_map_user` 返回 -4；整体下移一页到 `0x7FFFFFFFC000` 解决。② APIC 模式下 IRQ 结束必须写 **LAPIC EOI**，`pic_send_eoi()` 无效；`idt.c` 改成按 `apic_enabled()` 二选一。③ QEMU 的 MADT 有 `IRQ0 → GSI 2` override，只配 IOAPIC pin 0 收不到 PIT；同时配 pin 0 与 override 的 GSI。④ 伪中断向量用 `0x2F` 复用已安装的 IRQ15 桩，避免跳到空 IDT 项。⑤ `apic_fallback_to_pic()` 保证 APIC 验证失败时能退回 B.6a 的 PIC 路径，不让后续自检挂死。
+- 复现命令：`wsl bash -c "bash /mnt/e/Mine/A_Desael3/DesOS/tools/make_iso.sh"`，再跑 `powershell -ExecutionPolicy Bypass -File E:\Mine\A_Desael3\DesOS\tools\run_qemu_btest.ps1`。
+- **现在能交互**：自检结束后内核进入 `shell_run()`，串口/PS/2 键盘可敲命令；`run` 可反复加载运行用户态程序。C.1 的鼠标等仍待做。
 
 ---
 
-## 9. 阶段 G：省电、更新与权限模型打磨
+## 阶段 C：设备与驱动
 
-- **步骤 G1（权限，目标 7）**：
-  - 定义四档：`kernel-user`（仅内核态）、`system-user`（系统服务）、`sudo-user`（可提权的管理员）、`user`（普通用户）。
-  - 实现 **Capabilities** 细粒度授权，而非简单的 root/非 root。
-- **步骤 G2（省电，目标 5）**：
-  - 实现 **ACPI** 解析与 **C-states / P-states** 调度。
-  - 空闲时把 CPU 降频/进入深闲置；笔记本续航优先策略。
-- **步骤 G3（更新，目标 6）**：
-  - **A/B 双分区**：更新写入备用分区，重启切换，失败自动回滚。
-  - **静默后台下载 + 可计划安装时段**，不打断用户。
-- **步骤 G4（体验）**：统一错误处理文案、清晰 CLI 帮助、无障碍（高对比/大字号）。
+- [ ] **C.1** 键盘 / 鼠标（PS/2）。（键盘 IRQ1 + 主键区 scancode 映射的最小子集已随 B.11 实现；鼠标、修饰键、扩展键待做）
+- [ ] **C.2** 帧缓冲输出（Limine 已给 framebuffer 地址，直接画点/字）。
+- [ ] **C.3** PCI 枚举（找设备）。
+- [ ] **C.4** 磁盘驱动：AHCI / ATA（能读扇区）。
+- [ ] **C.5** 网络：e1000 / RTL8139 + 最小 TCP/IP 栈。
+- [ ] **C.6** USB：EHCI / xHCI（键鼠/存储）。
+- [ ] **C.7** ACPI 与电源管理（为笔记本省电打基础，见阶段 H）。
 
 ---
 
-## 10. 里程碑检查清单（快速对照）
+## 阶段 D：用户态、C 库与权限模型（目标 7）
 
-| 里程碑 | 完成标志 |
-|---|---|
-| 工具就绪 | 1.1–1.7 全部执行成功，QEMU 可启动 |
-| 阶段 A | 内核打印字符 + 键盘回显 |
-| 阶段 B | 圆角窗口桌面 + 可拖动 + 终端窗口 |
-| 阶段 C | `.desos` 包能装能跑 + `/` `\` 通吃 |
-| 阶段 D | 能装并运行 DEB / Linux 命令行 |
-| 阶段 E | 能运行简单 EXE / BAT / MSI |
-| 阶段 F | 能安装并运行简单 APK |
-| 阶段 G | 四档权限 + 省电 + 静默更新 |
-
----
-
-## 11. 风险与建议（务必看）
-
-1. **兼容层是无限深坑**：Windows/Android 兼容是「永远做不完」的。建议每个阶段都设「能跑通 1–2 个真实程序」的小目标，而不是追求 100% 覆盖。
-2. **先 Linux 后 Windows 的架构更省力**：因为 Android 依赖 Linux ABI；若顺序颠倒会返工。
-3. **尽早虚拟化测试**：每写完一个模块就用 QEMU 跑，不要攒到后期。
-4. **文档与测试并重**：内核没有「重启试试」的容错，单测和 CI 能救命。
-5. **可参考的现成项目**（学习用，非照搬）：`Redox OS`（Rust 内核）、`SerenityOS`（类 Win 软 UI）、`ReactOS`（Win 兼容）、`Wine`（Win 用户态）、`Limine`（引导）。
+- [ ] **D.1** 自研 `libc`（DesOS C 运行时）：基础 `stdio` / `stdlib` / `string` / 系统调用封装。
+- [ ] **D.2** 权限分级（目标 7）：
+      - `kernel-user`：内核自身，ring 0，最高权限。
+      - `system-user`：系统服务/守护进程，受限特权，管硬件与系统资源。
+      - `sudo-user`：管理员，可经授权提权（类似 sudo，需确认）。
+      - `user`：普通用户，最小权限。
+      - 在 VFS/进程/系统调用层做 capability / ACL 校验。
+- [ ] **D.3** `init` 与服务管理（启动用户态、拉起系统服务）。
+- [ ] **D.4** 自带 CLI（类 Linux，说明更清晰；用 Python 生成 `help` 文档与命令手册）。
 
 ---
 
-> 下一步行动：从 **步骤 1**（安装 Ubuntu 24.04 LTS）开始，逐条打到对勾即可。每完成一节，回来更新本文档顶部的进度标记。
+## 阶段 E：兼容层（重点、最难，目标 1）
+
+- [ ] **E.1 [Linux]** ELF 加载器 + Linux 系统调用子集 → 运行 `DEB` 程序（目标 M3）。
+- [ ] **E.2 [Windows]** PE 加载器 + Win32 API 子集 → 运行 `EXE`（目标 M4）。思路参考 Wine / ReactOS。
+- [ ] **E.3 [Windows]** `CMD` / `BAT` 解释器。
+- [ ] **E.4 [Windows]** `MSI` 安装包兼容（解析表、执行安装序列）。
+- [ ] **E.5 [Android]** Android 运行时（ART）跑在 “类 Linux 环境” 上 → 运行 `APK`（目标 M6，长期攻坚）。
+
+> 路径处理（目标 8）：VFS 层把 `\` 统一规范化为 `/`，对外同时接受两种写法。
+
+---
+
+## 阶段 F：图形界面（目标 2，圆润风格）
+
+- [ ] **F.1** 合成器（compositor）：基于 framebuffer 的图层合成。
+- [ ] **F.2** 窗口管理器：圆角、阴影、模糊、柔和平移（C++）。
+- [ ] **F.3** 控件库（按钮/输入框/菜单等，C++）。
+- [ ] **F.4** 原生应用格式 + 路径自动识别（见目标 8）。
+
+---
+
+## 阶段 G：自有软件生态（目标 8）
+
+- [ ] **G.1** 自有程序/安装包后缀（如 `.dapp` 应用、`.dsys` 系统程序、`.dlib` 库）。
+- [ ] **G.2** 包管理器（Python 写）：安装 / 卸载 / 查询 / 依赖。
+- [ ] **G.3** 软件仓库 / 商店雏形。
+
+---
+
+## 阶段 H：省电与安全更新（目标 5、6）
+
+- [ ] **H.1** 笔记本省电：CPU 调频、空闲节能、设备休眠（接阶段 C 的 ACPI）。
+- [ ] **H.2** 安全更新机制：后台下载、定时安装、**不打扰**用户（不像 Windows 弹窗）。
+
+---
+
+## 阶段 I：扩展到其他设备（远期）
+
+- [ ] **I.1** 平板：触控 + 现有内核移植。
+- [ ] **I.2** 手机：ARM64 移植 + 移动 UI。
+- [ ] **I.3** 手表：极小资源移植（裁剪内核与 UI）。
+
+---
+
+## 进度速查
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 0 | 环境准备 | 进行中（0.1-0.22 完成；0.23-0.26 完成，仅 0.27 `make install` 待办；交叉链已完成）|
+| A | 引导与内核骨架 (M1) | ✅ **已完成**（A.1-A.8 全部完成，M1 达成；Windows QEMU 11.1.0 + WSL QEMU 8.2.2 双环境验证 PASS）|
+| B | 内核核心 | ✅ **已完成**（B.1–B.11 全部完成，含 B.6b APIC 切换；QEMU 16 项检查 PASS；M2 达成，进入可交互 Shell）|
+| C | 设备与驱动 | 待开始 |
+| D | 用户态/权限 (M2) | 待开始 |
+| E | 兼容层 (M3/M4/M6) | 待开始 |
+| F | 图形界面 (M5) | 待开始 |
+| G | 软件生态 | 待开始 |
+| H | 省电/更新 | 待开始 |
+| I | 其他设备 | 待开始 |

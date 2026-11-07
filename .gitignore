@@ -1,9 +1,31 @@
-# 含 sudo 密码，禁止提交
-password.for.wsl.lock
-
-# Rust 构建产物
+# 构建产物
+*.o
+*.obj
+*.elf
+*.bin
+kernel.bin
+desos.iso
+build/
 target/
 
-# 系统临时文件
+# 编辑器 / IDE
+.vscode/
+.vs/
+*.swp
+
+# 日志
+*.log
+
+# 外部安装的交叉工具链（不入库）
+opt/
+cross/
+
+# OS 专属
 .DS_Store
-Thumbs.db
+
+# 本地凭据（绝不入库）
+password.for.wsl.lock
+
+# Limine 引导镜像是构建必需文件，不能被上面的 *.bin 规则忽略
+!tools/limine/limine-12.9.6/bin/limine-bios-cd.bin
+!tools/limine/limine-12.9.6/bin/limine-uefi-cd.bin
