@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 // B.10 ELF64 用户程序加载器
-//   - 镜像是编译进内核 .rodata 的静态 ELF64（user/hello.c）；
+//   - 镜像是编译进内核 .rodata 的静态 ELF64（user/apps/*.c，D.3b 起多程序 manifest）；
 //   - 为每个程序建独立 PML4，把 PT_LOAD 段映射到用户虚拟地址；
 //   - 另映射 4 页用户栈，返回 entry / rsp / cr3，交给线程调度器 iretq 进 ring3。
 struct user_image {

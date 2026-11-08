@@ -6,14 +6,10 @@
 
 // B.9 系统调用：统一入口 int 0x80（IDT 向量 128，DPL=3 允许 ring3）。
 // 约定：rax = 调用号，rdi/rsi/rdx = 参数 1/2/3，返回值写回栈帧的 rax。
+// 调用号定义在 desos_abi.h（D.1 起，与用户态 libc 共享唯一出处）。
 #define SYSCALL_VECTOR 0x80
 
-#define SYS_WRITE     0   // (fd=1, const char *buf, uint64_t len) -> len
-#define SYS_YIELD     1   // () -> 0
-#define SYS_EXIT      2   // () -> 0，标记当前线程 DEAD 并让出
-#define SYS_GET_TICKS 3   // () -> timer_ticks()
-#define SYS_GETPID    4   // () -> 当前线程 id
-#define SYS_MAX       5
+#include "desos_abi.h"
 
 void     syscall_init(void);
 int64_t  syscall_dispatch(struct interrupt_frame *f);

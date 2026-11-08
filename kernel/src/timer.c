@@ -4,6 +4,7 @@
 #include "timer.h"
 #include "pic.h"
 #include "sched.h"
+#include "usb.h"
 #include <stdint.h>
 
 #define DEFAULT_HZ 100
@@ -22,6 +23,7 @@ void timer_init(uint32_t frequency) {
 
 void timer_on_tick(void) {
     ticks++;
+    usb_poll();            // C.6：非阻塞处理 xHCI 事件环（HID 中断传输完成回调）
     if (slice_left > 0) slice_left--;
     if (slice_left == 0) {
         sched_request();

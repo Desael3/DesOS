@@ -8,6 +8,10 @@ desos.iso
 build/
 target/
 
+# Python 缓存（gen_cli_docs.py / build_kernel.py 等脚本运行时生成）
+__pycache__/
+*.pyc
+
 # 编辑器 / IDE
 .vscode/
 .vs/

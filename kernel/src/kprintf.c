@@ -1,13 +1,21 @@
-// kprintf.c —— 内核轻量格式化输出到 COM1（对应 ProjectRoad B 阶段基础设施）
+// kprintf.c —— 内核轻量格式化输出：COM1 + C.2 帧缓冲控制台
 
 #include "kprintf.h"
 #include "serial.h"
+#include "fb.h"
 #include <stdarg.h>
 #include <stdint.h>
+
+// D.5：quiet 模式下屏幕不镜像，但串口始终完整输出（日志不丢）
+static int screen_quiet;
+
+void kprintf_set_quiet(int quiet) { screen_quiet = quiet ? 1 : 0; }
+int  kprintf_is_quiet(void)      { return screen_quiet; }
 
 static void kputc(char c) {
     if (c == '\n') serial_putc('\r');
     serial_putc(c);
+    if (!screen_quiet && fb_ready()) fb_console_putc(c);   // C.2：镜像到屏幕
 }
 
 static void put_hex(uint64_t v, int width, int upper) {

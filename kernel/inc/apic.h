@@ -7,7 +7,7 @@
 // 切换成功后 IRQ 的 EOI 改由 apic_send_eoi() 写 LAPIC EOI 寄存器（见 idt.c）；
 // 若 APIC 中断验不通，apic_fallback_to_pic() 会恢复到 B.6a 的 PIC 路径。
 
-void     apic_set_rsdp(uint64_t rsdp_addr, uint64_t hhdm_offset);
+// RSDP 解析已统一由 acpi_init()（C.7）完成；apic_init 直接用 acpi_find_table("APIC")。
 int      apic_init(void);                 // 0=成功，负数=失败原因
 int      apic_enabled(void);
 void     apic_send_eoi(void);
@@ -22,5 +22,6 @@ uint32_t apic_madt_flags(void);
 uint32_t apic_override_count(void);
 uint32_t apic_gsi_for_irq(uint8_t irq);   // MADT Interrupt Source Override 后的 GSI
 uint32_t apic_redir_low(uint32_t pin);    // 读回 IOAPIC 重定向表低 32 位
+void     apic_mask_gsi(uint32_t gsi, int masked);   // 屏蔽/放开单个 IOAPIC 引脚
 
 #endif // DESOS_APIC_H

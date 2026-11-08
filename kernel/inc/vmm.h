@@ -37,5 +37,7 @@ uint64_t vmm_current_pml4_phys(void);
 // HHDM），低半留空给用户程序；用户页映射需带 VMM_USER 位才能被 ring3 访问。
 uint64_t vmm_create_user_pml4(void);
 int      vmm_map_user(uint64_t pml4, uint64_t va, uint64_t phys, uint64_t flags);
+// D.2c：只读查询用户地址空间某 4K 对齐 VA 的 PTE 原始值（0=未映射）
+uint64_t vmm_get_pte_user(uint64_t pml4, uint64_t va);
 
 #endif // DESOS_VMM_H

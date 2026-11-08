@@ -1,9 +1,70 @@
-# DesOS 项目路线图（ProjectRoad）
+# DesOS 工程树（ProjectRoad）
 
 > 从零开始做一个操作系统。先做**电脑（x86_64）**，后续再扩展到手机/平板/手表等。
-> 本文档是**路线图 + 行动清单**。每一步都拆到最小（一步只干一件小事），做完一步就把它前面的 `[ ]` 改成 `[x]`。
-> 环境沿用：`Windows 11` + `WSL2 (Ubuntu 24.04)`。涉及跨环境的地方会单独标 `[Win]` 或 `[WSL]`。
-> 习惯遵循 `promat.md`：装前先查、Windows 软件装 D 盘、提权读 `password.for.wsl.lock` 用 `sudo -S`、QEMU 用 Windows 版、验证看版本号。
+> 本文档是**工程树 + 行动清单**：记录项目结构、**干了哪些 / 没干哪些**、**每一步的目的**与验收证据。
+> **读法**：每条清单项就是一步（一步只干一件小事）；`[x]` = 已完成、`[ ]` = 未开始，条目正文是该步的目的与产出，`→` 后是落地文件或实测结果。做完一步就把 `[ ]` 改成 `[x]`。
+> 环境沿用 `Windows 11` + `WSL2 (Ubuntu 24.04)`，跨环境处标 `[Win]` / `[WSL]`；工作习惯见 `promat.md`。
+
+## 文档分工
+
+| 文件 | 职责 |
+|------|------|
+| `README.md` | 项目介绍、环境要求、构建 / 运行 / 验证命令（先看这个） |
+| `ProjectRoad.md` | 本文：工程树、进度、每步目的（验收证据已抽离到 `log.md`） |
+| `log.md` | 各阶段 / 各步的验收证据与串口日志副本 |
+| `NOTES.md` | 踩过的坑、原因、解决办法、已知限制 |
+| `promat.md` | 工作习惯与 AI 助手约束（提示词） |
+| `LICENSE` | 授权条款 |
+
+## 项目目录树
+
+```
+DesOS/
+├── limine.conf                  # Limine 12.x 启动菜单（行尾必须 LF）
+├── kernel/
+│   ├── asm/                     # boot.asm / gdt.asm / idt_stubs.asm
+│   ├── inc/                     # 31 个 .h（pmm/vmm/heap/gdt/idt/pic/apic/sched/timer/
+│   │                           #   service/priv/userapp/kprintf/fb/... + cli_commands.h 生成物）
+│   ├── src/                     # 30 个 .c（含 b_selftest.c、shell.c、init.c、xhci.c、fb.c）
+│   └── kernel.ld                # VMA 更高半 / LMA 0x100000
+├── user/
+│   ├── apps/                    # hello.c / init.c（每个单独链接成内嵌 ELF）
+│   ├── libc/                    # 自研 libc：desos.h / stdio.c / stdlib.c / string.c
+│   └── linker.ld                # ring3 加载地址 0x400000
+├── docs/                        # cli-commands.md / cli-help.txt（gen_cli_docs.py 生成）
+├── tools/
+│   ├── limine/                  # build_limine.sh + 源码包 + 构建必需产物
+│   ├── build_kernel.py          # NASM + x86_64-elf-gcc → build/kernel.elf（先跑 CLI 生成器）
+│   ├── build_user.py            # user/apps/*.c → user_image.asm（NASM incbin + manifest）
+│   ├── gen_cli_docs.py          # CLI 单一数据源 → cli_commands.h / cli-help.txt / cli-commands.md
+│   ├── build_iso.py             # xorriso 打 BIOS/UEFI 混合 ISO
+│   ├── make_iso.sh              # 一键构建入口
+│   ├── build_cross_toolchain.sh # 交叉工具链构建
+│   ├── run_qemu_test.ps1        # M1 自动验收
+│   ├── run_qemu_btest.ps1       # 全量自动验收（43 项串口检查 + 3 份 CLI 产物）
+│   └── run_desos_*.cmd          # 可见窗口 / 串口 / 全量测试入口
+├── build/                       # 构建产物与验收日志（.gitignore 忽略）
+├── README.md / ProjectRoad.md / log.md / NOTES.md / promat.md / LICENSE
+└── .gitignore
+```
+
+## 阶段目的速览
+
+| 阶段 | 目的 | 状态 |
+|------|------|------|
+| 0 环境准备 | 备齐 Windows + WSL2 工具链与 `x86_64-elf` 交叉编译器，使内核能编译、ISO 能打包、QEMU 能启动 | 进行中（仅 0.27 待办） |
+| A 引导与内核骨架 | 让机器从 Limine 引导进内核，串口 + 帧缓冲能输出 `DesOS boot OK`（**M1**） | 已完成 |
+| B 内核核心 | 建起 PMM/VMM/堆/GDT/IDT/PIC+APIC/调度/线程/syscall/ELF+ring3/Shell，能跑用户程序、能敲命令（**M2**） | 已完成 |
+| C 设备与驱动 | 补全键鼠、帧缓冲输出、PCI 枚举，再到磁盘 / 网络 / USB / ACPI | ✅ 已完成（C.1–C.7 全完成，QEMU PASS + VMware 双固件冒烟 + `poweroff`/`reboot` 真机验证） |
+| D 用户态与权限 | 自研 libc、四级权限、`init`、自带 CLI | ✅ 已完成（D.1–D.5 全完成；仅 D.2b VFS ACL 依赖后续文件系统阶段） |
+| E 兼容层 | ELF + Linux syscall → `DEB`；PE + Win32 → `EXE`/`CMD`/`BAT`/`MSI`；ART → `APK` | 待开始（下一阶段主线） |
+| F 图形界面 | framebuffer 合成器 + 圆润风格窗口管理器与控件库 | 待开始 |
+| G 软件生态 | 自有程序 / 安装包格式、包管理器、仓库雏形 | 待开始 |
+| H 省电与更新 | ACPI 电源管理进阶（调频 / 休眠）、不打扰的安全更新 | 待开始（C.7 已完成 ACPI S5 与重启基础） |
+| I 其他设备 | 平板 / 手机（ARM64）/ 手表移植 | 远期 |
+
+> **为什么按这个顺序**：0 先备工具链 → A 才能引导并输出 → B 先有 PMM/VMM/堆，才谈得上 GDT/IDT → 有中断才有 PIT/APIC 与抢占调度 → 有调度才有线程与 `int 0x80` → 分页 + 系统调用才能把 ELF 送进 ring3 → Shell 把前面所有能力收成可交互入口。C 之后是设备驱动，D/E 才谈用户态与兼容层。
+> 踩坑与排障不在本文重复，统一见 `NOTES.md`；各步的判定结果与串口片段抄录在 `log.md`。`build/` 被 `.gitignore` 忽略，本地串口日志副本已全部清理（2026-11-08），跑一次验收脚本即可重新生成当前日志。
 
 ---
 
@@ -38,8 +99,8 @@
 - 路径规范化：系统内部统一用 `/`，输入时兼容 `\`，在 VFS 层做一次归一化。
 
 ### 0.4 里程碑（用来判断进度）
-- **M1**：能进内核并在 QEMU 里看到 DesOS 启动字样 ✅ **已达成**（阶段 A 全部完成，详见 A.7 验收记录）
-- **M2**：内核能加载并运行一个用户态程序 ✅ **已达成**（B.10：静态 ELF64 加载 + 独立用户 PML4 + `iretq` 进 ring3 + `int 0x80` 系统调用；实测串口输出 `Hello from DesOS userland (ring3)!`，详见「B 阶段第四批验收记录」）
+- **M1**：能进内核并在 QEMU 里看到 DesOS 启动字样 ✅ **已达成**（阶段 A 全部完成，详见 `log.md` 的「阶段 A」）
+- **M2**：内核能加载并运行一个用户态程序 ✅ **已达成**（B.10：静态 ELF64 加载 + 独立用户 PML4 + `iretq` 进 ring3 + `int 0x80` 系统调用；实测串口输出 `Hello from DesOS userland (ring3)!`，详见 `log.md` 的「阶段 B」）
 - **M3**：能运行一个 Linux `DEB` 程序（经兼容层）
 - **M4**：能运行一个 Windows `EXE`（经兼容层）
 - **M5**：自带圆润图形界面可用
@@ -107,22 +168,9 @@
 - [x] **A.7 [Win]** 用 Windows 版 QEMU 启动 ISO。→ `tools/run_qemu_test.ps1`（`-nographic` 把 COM1 接到 stdout、自动判定 `DesOS boot OK`）。**QEMU 11.1.0 实测 PASS**：`limine: ELF entry point: 0xffffffff80000000` / `Base revision: 1` / `Requests count: 1` / `DesOS boot OK`；WSL QEMU 8.2.2 交叉验证同样通过；帧缓冲亦绘出 `DesOS boot OK`。看画面用 `tools/run_desos_window.cmd`（`-display gtk`），看串口日志用 `tools/run_desos_serial.cmd` ✅
 - [x] **A.8 [C]** 加串口日志 `serial.c`（输出到 `COM1` 0x3F8，轮询 LSR 的 THR 空位）。→ `kernel/src/serial.c` + `kernel/inc/serial.h`；`serial_init()` 在 QEMU 环境下会卡在 LSR 等待，故 `kernel_main` 直接发（SeaBIOS 已设好 115200 8N1）✅
 
-### A.7 验收记录（M1，2026-11-07）
+> **A 阶段验收记录**（M1）详见 `log.md` 的「阶段 A」。
 
-- 权威环境 **Windows QEMU 11.1.0**：`RESULT: PASS`，串口完整链路为 Limine 菜单 3 秒倒计时 → `Loading executable \`boot():/kernel.elf\`` → `ELF entry point` / `Base revision: 1` / `Requests count: 1` → `DesOS boot OK`。
-- 交叉验证 **WSL QEMU 8.2.2**：同样输出 `DesOS boot OK`。
-- 图形窗口 `-display gtk` 实测可用（1024x768x32），画面为深蓝底 + `DesOS boot OK` 点阵字。
-- 复现命令：`wsl bash -c "bash /mnt/e/Mine/A_Desael3/DesOS/tools/make_iso.sh"`，再跑 `powershell -File tools\run_qemu_test.ps1`。
-- **仍不能交互**：内核打印后进入 `hlt` 循环，没有键盘/串口输入驱动、没有 shell。要「能敲命令」需先做 B.5/B.6（IDT/中断）、C.1（键盘）、B.11（最小 Shell）。
-
-### A 阶段踩过的坑（排障备忘）
-
-1. **配置语法（最主要）**：`=` 分隔符、`:DesOS` 菜单项、行内注释、CRLF 行尾——都会让 Limine 12.x 解析不到选项/条目，表现为停在菜单（默认 5 秒倒计时）、报 `Default entry is not valid`，根本不加载内核。判断依据：串口出现 `Booting automatically in 5...` 就是配置没解析。注意**选项名不区分大小写**（CONFIG.md 明确），改大小写不解决问题。
-2. **`.limine_reqs` 段名**：触发 base revision 0 的废弃机制 → panic 且不引导。改名 + 升 base revision 1 解决。
-3. **`.bss` 用 `NOLOAD`**：Limine 不映射该段，`call kernel_main` 压栈即 #PF → 三重错误。
-4. **LMA = 更高半 VMA**：物理载入地址不合法。用 `AT(0x100000)` 修正。
-5. **ISO 启动镜像截断**：`-boot-load-size 4` 只拷 2048 字节，SeaBIOS 加载不了 Limine；按实际大小设 56。
-6. **排障方法**：`serial: yes` + `-nographic` 可把 Limine 引导日志/panic 打到串口；`-display none` + monitor `screendump` 抓帧缓冲转 PNG，可「读」出只显示在 VGA 上的错误。
+> **A 阶段踩过的坑**（Limine 12.x 配置语法、`.limine_reqs` 段名、`.bss NOLOAD`、LMA、ISO 启动镜像截断、串口 / 帧缓冲排障方法）已汇总到 `NOTES.md` 第 1 节，本文不重复。
 
 ---
 
@@ -138,92 +186,84 @@
 - [x] **B.7** 定时器 + 调度器：先协作式，再抢占式（时间片）。→ `kernel/inc/timer.h` + `kernel/src/timer.c`（PIT tick 计数、时间片到期 `sched_request()`）、`kernel/inc/sched.h` + `kernel/src/sched.c`（round-robin 就绪队列）。**抢占切换点唯一放在 `isr_common` 的「handler 返回后、恢复寄存器前」**：`sched_switch_from_irq(cur_rsp)` 返回下一线程 rsp，两者栈布局完全一致，后续 `pop...iretq` 可直接复用；协作式让出走 `SYS_YIELD`。实测 PIT 100 Hz 下 A/B 线程按时间片交替执行 ✅
 - [x] **B.8** 进程/线程模型：PCB/TCB、上下文结构。→ `kernel/inc/thread.h` + `kernel/src/thread.c`。`struct thread` 含 `rsp`/独立内核栈/`cr3`/状态/id/entry/arg；`thread_create()` 用 `kmalloc` 分配 16 KiB 栈，并在栈顶构造一份完整「中断帧」（`rip=thread_bootstrap`、IF=1、模拟 `call` 后的 rsp 对齐），使首次调度即可由统一 `iretq` 路径启动；`thread_exit()` 走 `SYS_EXIT` 标记 DEAD 并让出。当前所有线程共用内核 PML4，地址空间分离留到 B.10 ✅
 - [x] **B.9** 系统调用接口：统一入口（asm 桩 → 分发表）。→ `kernel/inc/syscall.h` + `kernel/src/syscall.c` + `idt_stubs.asm` 的 `isr_stub_128`。用 `int 0x80`（IDT 向量 128、**DPL=3** 门，将来 ring3 也能调用），约定 `rax`=调用号、`rdi/rsi/rdx`=参数，返回值写回栈帧 `rax`；已注册 `SYS_WRITE` / `SYS_YIELD` / `SYS_EXIT` / `SYS_GET_TICKS` / `SYS_GETPID`。自检覆盖正常调用、未知调用号返回 -1 ✅
-- [x] **B.10** 用户态 ELF 加载器（M2 基础）。→ `kernel/inc/elf.h` + `kernel/src/elf.c`，用户程序 `user/hello.c` / `user/linker.ld` / `tools/build_user.py`（静态 ELF64，`ENTRY(_start)`，加载地址 `0x400000`，NASM `incbin` 内嵌进内核 `.rodata`）。加载器校验 ELF header、逐页复制 `PT_LOAD`、用 `vmm_create_user_pml4()`（只复制更高半 PML4 项）与 `vmm_map_user()` 建独立用户地址空间，另映射 4 页用户栈；`thread_create_user()` 构造 `cs=0x23 / ss=0x1B / rflags=0x202` 的初始中断帧，调度时切 `CR3` + 更新 `TSS.rsp0`，统一 `iretq` 降权到 ring3。用户程序用 `int 0x80` 的 `SYS_WRITE` 打印、`SYS_EXIT` 退出。实测 `ring3-calls=2`，输出 `Hello from DesOS userland (ring3)!` ✅
+- [x] **B.10** 用户态 ELF 加载器（M2 基础）。→ `kernel/inc/elf.h` + `kernel/src/elf.c`，用户程序 `user/apps/hello.c`（B.10 时为 `user/hello.c`，D.3b 迁入 `apps/`）/ `user/linker.ld` / `tools/build_user.py`（静态 ELF64，`ENTRY(_start)`，加载地址 `0x400000`，NASM `incbin` 内嵌进内核 `.rodata`）。加载器校验 ELF header、逐页复制 `PT_LOAD`、用 `vmm_create_user_pml4()`（只复制更高半 PML4 项）与 `vmm_map_user()` 建独立用户地址空间，另映射 4 页用户栈；`thread_create_user()` 构造 `cs=0x23 / ss=0x1B / rflags=0x202` 的初始中断帧，调度时切 `CR3` + 更新 `TSS.rsp0`，统一 `iretq` 降权到 ring3。用户程序用 `int 0x80` 的 `SYS_WRITE` 打印、`SYS_EXIT` 退出。实测 `ring3-calls=2`，输出 `Hello from DesOS userland (ring3)!` ✅
 - [x] **B.11** 最小 Shell（内核态），能读命令、打印回显。→ `kernel/inc/shell.h` + `kernel/src/shell.c`，输入 `serial.c` 的 COM1 轮询 + `kbd.c` 的 PS/2 键盘 IRQ1（C.1 最小子集），统一进 256 字节环形缓冲；行编辑支持可打印字符回显、退格、回车执行；内建命令 `help / echo / mem / ticks / pid / threads / run / version / clear / halt`，其中 `run` 联动 B.10 真正拉起用户态程序。`shell_run()` 打开 PIT/IRQ1 后进入 `sti + hlt` 交互主循环 ✅
 
-### B 阶段首批验收记录（B.1–B.3，2026-11-07）
+> **B 阶段验收记录**（首批 B.1–B.3、第二批 B.4/B.5/B.6a）详见 `log.md` 的「阶段 B」。
 
-- 自检代码 `kernel/src/b_selftest.c`：由 `kernel_main` 在 M1 帧缓冲画面之后依次跑 B.1（单页/连续页分配 + HHDM 写读 + 释放计数复原）、B.2（内核文本与 HHDM 反查 + 新映射写读 + 解映射）、B.3（多块写读隔离 + 释放复用 + 1 MiB 大分配触发堆增长），全部真分配/真写入/真读回/真释放，结果打到 COM1。
-- 权威环境 **Windows QEMU 11.1.0**（`-m 512M -nographic -no-reboot`）：`RESULT: PASS`。串口链路 `Requests count: 3` → `DesOS boot OK` → `[B.1] usable=130679 pages (510 MiB)`（数值随内核镜像大小略变）→ `[B.2] kernel va 0xffffffff800027c6 -> phys 0x...` → `[B.2] map 0xffffc90000000000 -> ..., readback=0x00c0ffee12345678` → `[B.1]/[B.2]/[B.3] selftest: PASS` → `B-STAGE: PASS (failed=0)`（堆按需映射 1040 KiB）。
-- 新增 `tools/run_qemu_btest.ps1`（逐项判定 M1 boot / B.1 / B.2 / B.3 / 总标记，日志 `build/b_selftest_qemu.log`）与可见窗口入口 `tools/run_desos_btest.cmd`；原 `tools/run_qemu_test.ps1` 的 M1 判定继续可用。
-- 复现命令：`wsl bash -c "bash /mnt/e/Mine/A_Desael3/DesOS/tools/make_iso.sh"`，再跑 `powershell -ExecutionPolicy Bypass -File tools\run_qemu_btest.ps1`。
-- **当时仍不能交互**：B.4–B.11 未做（GDT/TSS、IDT/异常、PIC/APIC、调度器、进程、系统调用、ELF 加载器、Shell）；键盘驱动属 C.1。后续进展见下节。
-
-### B 阶段第二批验收记录（B.4 / B.5 / B.6a，2026-11-07）
-
-- `tools/build_kernel.py` 改为汇编 `kernel/asm/*.asm` 全部文件；汇编产物加 `asm_` 前缀，避免与同名 C 源（如 `gdt.asm` / `gdt.c`）的目标文件互相覆盖。
-- 实测 **Windows QEMU 11.1.0**：`RESULT: PASS`（7 项检查全过）。串口链路：
-  `[B.4] GDT base=... limit=55, CS=0x8 TR=0x28, TSS rsp0=... IST1=...` →
-  `[B.5] IDT base=... limit=4095, 48 stubs installed (#DF/#PF use IST1)` →
-  `[B.6] PIC remapped IRQ0-15 -> vectors 32-47, all IRQs masked` →
-  `[B.5] #BP handled ... (returning)` →
-  `[B.5] #PF handled: cr2=0xffffc90000002000 err=0x2 -> demand-mapped` →
-  `[B.6] PIT ch0 1000 Hz` → `[B.6] selftest: PASS (imr=0xfe/0xff irq0=3 ticks=3)` →
-  `[B.1]–[B.6] selftest: PASS` → `B-STAGE: PASS (failed=0)`。
-- 验收脚本 `tools/run_qemu_btest.ps1` 检查项扩到 7 项（M1 + B.1–B.6 + 总标记），日志 `build/b_selftest_qemu.log`；可见窗口入口 `tools/run_desos_btest.cmd`。
-- **B 阶段踩过的坑**：① NASM 的 `mov ds, ax` 实际编码为 `mov ds, eax`（32 位形式），必须先 `mov eax, edx` 清高 16 位，否则加载垃圾选择子 → #GP；② 长模式重载 CS 必须 `retfq`（`48 CB`），`retf`（`CB`）是 32 位远返回，只弹 32 位 RIP/CS；③ NASM 的 `ltr` 只接受 16 位寄存器写法（`ltr di`）；④ 同名 asm/C 源文件产物必须加前缀。
-- **当时仍不能交互**：B.6b（APIC）、B.7–B.11 未做（定时器/调度器、进程、系统调用、ELF 加载器、Shell）；键盘驱动属 C.1。后续进展见下节。
-
-### B 阶段第三批验收记录（B.7 / B.8 / B.9，2026-11-07）
-
-- 本批优先做「通往 M2 的必经链路」，**B.6b（APIC）主动延后**：单核内核暂不需要，且不影响用户态程序加载。
-- `idt_stubs.asm` 的公共入口在 `call isr_common_handler` 之后新增一个切换点：`mov rdi,rsp; call sched_switch_from_irq; mov rsp,rax`。这样所有线程被挂起时都停在同一形态的中断帧上，无需单独的上下文切换汇编，也不用在 PIC 中断处理中途 `iretq`。
-- 实测 **Windows QEMU 11.1.0**：`RESULT: PASS`（10 项检查全过）。串口链路：
-  `[B.6] PIT ch0 100 Hz` → `[B.9] syscall gate int 0x80 (vector 128, DPL=3), 5 calls registered` →
-  `[B.7] preemptive scheduling enabled (PIT 100 Hz)` →
-  `[B.7] worker A/B step=1..3` 交错打印（来回抢占，具体顺序随调度时序略变） →
-  `[B.7] selftest: PASS (ticks=9~10 switches=11~12, time-slice preemption)` →
-  `[B.8] selftest: PASS (threads=2 A=3 B=3, both exited)` →
-  `[B.9] sys_write via int 0x80 OK` → `[B.9] selftest: PASS (vector=0x80 pid=0 registered=5)` →
-  `B-STAGE: PASS (failed=0)`。
-- `tools/run_qemu_btest.ps1` 检查项扩到 10 项，等待时间调到 20 秒（worker 忙等需要）。
-- **仍不能交互**：B.6b（APIC）、B.10（用户态 ELF 加载器）、B.11（最小 Shell）未做；键盘/串口输入属 C.1。要真正「能敲命令」还需 B.10 + B.11 + C.1。（**本条为当时状态，已在第四批解决**）
-
-### B 阶段第四批验收记录（B.10 / B.11 / B.6b，2026-11-07）
-
-- 本批把 B 阶段剩余项一次做完：**B.10 用户态 ELF/ring3**、**B.11 可交互 Shell**、此前主动延后的 **B.6b APIC**。**M2 达成，阶段 B 全部完成**。
-- 实测 **Windows QEMU 11.1.0**（`-m 512M -nographic -no-reboot`）：`RESULT: PASS - B.1-B.11 (incl. B.6b APIC) all self-tests passed`，16 项检查全过。串口关键链路：
-  `Requests count: 4`（新增 RSDP 请求） →
-  `[B.6b] MADT: lapic=0xfee00000 ioapic=0xfec00000 bsp=0 ver=0x14 pins=24 overrides=5 flags=0x1 gsi0=2, PIC disabled` →
-  `[B.6b] selftest: PASS (... irq0+=3 mode=APIC)` →
-  `[B.7] selftest: PASS (ticks=15 switches=17)`（APIC 模式下抢占依旧生效） →
-  `[B.10] ELF loaded: entry=0x40003b rsp=0x7ffffffffff8 segments=1` →
-  `Hello from DesOS userland (ring3)!` → `[B.10] selftest: PASS (ring3-calls=2)` →
-  `DesOS> help / echo / mem / bogus / run / ticks` 的回显与执行 → 第二次 ring3 输出 →
-  `[B.11] selftest: PASS (commands=5 lines=6 run-ring3=2)` → `B-STAGE: PASS (failed=0)` →
-  `[B.11] interactive shell: COM1 serial + PS/2 keyboard (IRQ1)`。
-- 验收脚本 `tools/run_qemu_btest.ps1` 检查项扩到 16 项（新增 B.6b、B.10、ring3 实输出、B.11、交互循环），等待时间 20 秒；`tools/run_desos_btest.cmd` 为可见窗口入口。
-- **B.6b 是真实切换，不是只解析 ACPI 就打 PASS**：自检读回 IOAPIC 重定向表（PIT→向量 32、键盘→33、未屏蔽）、确认 `IMR=0xff/0xff`（PIC 已屏蔽），再 `sti` 让 PIT 经 IOAPIC 连续投递 3 次 IRQ0——若 LAPIC EOI 没写对，第 2/3 次不会到达。B.7–B.11 也全部在 APIC 模式下跑完。
-- **B.11 输入链路**：自检用 `shell_inject()` 走完整「输入→回显→解析执行」，`run` 命令真拉起 B.10 用户程序（`run-ring3=2`），键盘路径用 `kbd_inject_scancode(0x1C)`（Enter）走与 IRQ1 handler 同一条 scancode 映射提交命令。真实按键需在有窗口/串口输入的 QEMU 里敲（`tools/run_desos_serial.cmd`），`-nographic` 自动验收无法注入按键。
-- **本批踩过的坑**：① 用户栈 4 页若从 `0x7FFFFFFFD000` 起，第 4 页落进 `0x0000800000000000`（低半 canonical 上界之外 / PML4[256] 的 HHDM），`vmm_map_user` 返回 -4；整体下移一页到 `0x7FFFFFFFC000` 解决。② APIC 模式下 IRQ 结束必须写 **LAPIC EOI**，`pic_send_eoi()` 无效；`idt.c` 改成按 `apic_enabled()` 二选一。③ QEMU 的 MADT 有 `IRQ0 → GSI 2` override，只配 IOAPIC pin 0 收不到 PIT；同时配 pin 0 与 override 的 GSI。④ 伪中断向量用 `0x2F` 复用已安装的 IRQ15 桩，避免跳到空 IDT 项。⑤ `apic_fallback_to_pic()` 保证 APIC 验证失败时能退回 B.6a 的 PIC 路径，不让后续自检挂死。
-- 复现命令：`wsl bash -c "bash /mnt/e/Mine/A_Desael3/DesOS/tools/make_iso.sh"`，再跑 `powershell -ExecutionPolicy Bypass -File E:\Mine\A_Desael3\DesOS\tools\run_qemu_btest.ps1`。
-- **现在能交互**：自检结束后内核进入 `shell_run()`，串口/PS/2 键盘可敲命令；`run` 可反复加载运行用户态程序。C.1 的鼠标等仍待做。
+> **B 阶段验收记录**（第三批 B.7/B.8/B.9、第四批 B.10/B.11/B.6b、B.7 修复）详见 `log.md` 的「阶段 B」。
 
 ---
 
 ## 阶段 C：设备与驱动
 
-- [ ] **C.1** 键盘 / 鼠标（PS/2）。（键盘 IRQ1 + 主键区 scancode 映射的最小子集已随 B.11 实现；鼠标、修饰键、扩展键待做）
-- [ ] **C.2** 帧缓冲输出（Limine 已给 framebuffer 地址，直接画点/字）。
-- [ ] **C.3** PCI 枚举（找设备）。
-- [ ] **C.4** 磁盘驱动：AHCI / ATA（能读扇区）。
-- [ ] **C.5** 网络：e1000 / RTL8139 + 最小 TCP/IP 栈。
-- [ ] **C.6** USB：EHCI / xHCI（键鼠/存储）。
-- [ ] **C.7** ACPI 与电源管理（为笔记本省电打基础，见阶段 H）。
+### 阶段 C 前置任务（2026-11-07 用户指示）
+
+> P.1 / P.2 已完成；P.3 已完成（**C.1 键鼠、C.2 帧缓冲输出、C.3 PCI 枚举、C.4 磁盘、C.5 网络、C.6 USB、C.7 ACPI 全部完成，自检全 PASS**）。B.7 自检的修复已单独实施并复验（见 `log.md` 的「阶段 B」）。
+>
+> **验证策略（2026-11-07 用户指示，已固化为 `promat.md` 第 14 条）**：阶段 C 的每个小步骤只在 **Windows 版 QEMU** 上真跑验收；等**整个阶段 C 全部完成、自检全 PASS** 后，才在 VMware 上做一次 BIOS / UEFI 跨 VMM 冒烟测试。阶段 D 同理。不要每改一小步就开 VMware。
+
+- [x] **P.1 [Win]** 安装 VMware。✅ **已完成（2026-11-07）**
+      - **渠道排查**：`downloads.broadcom.com` 302 跳 `access.broadcom.com` OAuth 登录（与「不登录不注册」约束冲突）；`download3.vmware.com` 域名已下线；`softwareupdate.vmware.com/cds/vmw-desktop/` 官方 CDS 只剩 `info-only` 元数据（Broadcom 已移除安装包）；winget 源无 VMware 包；`web.archive.org` 本机不可达。最终走第三方 GitHub Releases 镜像 `201853910/VMwareWorkstation`，全程无需账号。
+      - 安装包：`VMware-workstation-full-17.6.4-24832109.exe`（425426160 字节）。
+      - **安全校验**（第三方渠道必做）：SHA-256 `10fe3a36f525d88aa133118ab3b5a16b18da88d4aa11b14d74e4164b3fb94ba9`，与 GitHub Release 公布的 `digest` 逐字节一致；Authenticode `Status=Valid`，签名者 `CN=Broadcom Inc`，签发者 DigiCert Trusted G4 Code Signing RSA4096 SHA384 2021 CA1，有效期至 2027-03-31。确认是 Broadcom 官方原版、未被篡改（仓库内另有 KeyGen，未下载、未使用；17.6.4 免费无需激活）。
+      - 安装：静默 `/s /v"/qn EULAS_AGREED=1 INSTALLDIR=D:\VMware\Workstation AUTOSOFTWAREUPDATE=0"`，装到 D 盘。首次尝试额外加 MSI 日志开关 `/l*v`，bootstrapper 把 `EULAS_AGREED` 截成 `ULAS_AGREED`，`VM_ValidateEULAAccepted` 返回 3 → MSI 1603；去掉 `/l*v` 后成功。
+      - 提权：本机 `ConsentPromptBehaviorAdmin=0` / `PromptOnSecureDesktop=0`（管理员免提示提升），`-Verb RunAs` 未弹任何登录、注册或确认窗口。用户随后允许改弹 UI 安装向导，但静默安装已完成且验证通过，故改为弹出 Workstation 主窗口供确认，未重跑安装向导（避免与已装产品冲突）。
+      - 验证（真跑命令）：`vmware.exe` / `vmrun.exe` 均为 `17.6.4 build-24832109`；注册表卸载项 `VMware Workstation 17.6.4`；服务 `VMnetDHCP`、`VMware NAT Service` Running；主窗口 `MainWindowTitle = VMware Workstation` 已弹出。
+      - 安装包与临时日志已按 `promat.md` 第 9 条删除。
+- [x] **P.2 [Win]** 冒烟测试：用 VMware 启动 `build/DesOS.iso`，验证「引导 → `DesOS>` 提示符」链路。✅ **已完成（2026-11-07）**
+      - VMX 配置：CD-ROM 指向 ISO、COM1 输出到文件（承接 `serial: yes`）；BIOS 与 UEFI 各验一次（详见 `log.md` 的「阶段 P」）。
+      - 判定：Limine 引导日志 → `DesOS boot OK` → B.1–B.11 自检 → `B-STAGE: PASS` → Shell 可输入命令。
+      - 键鼠：原担心 VMware 默认走 USB HID 而非 PS/2；实测 UEFI 模式下 PS/2 IRQ1 真实按键可用（详见 `log.md` 的「阶段 P」）。鼠标、修饰键、扩展键仍待 C.1。
+
+> **VMware 验收记录**（P.2 BIOS、UEFI 补充、真实按键、B.7 修复摘要）详见 `log.md` 的「阶段 P」。
+
+- [ ] **P.3** 开始阶段 C 编写：C.1 键鼠（拆 C.1a/b/c）→ C.2 帧缓冲输出 → C.3 PCI 枚举 → C.4 磁盘。前置：P.2 完成。→ **进行中，C.1 / C.2 / C.3 / C.4 已完成（2026-11-08）**。
+
+> **VMware 硬化修复（2026-11-08）**：VMware 真机冒烟中发现的若干问题已修复并复验——C.1 键盘在 APIC 模式下 `kbd_init` 未真正打开 PS/2 端口/IRQ/扫描（`pic_clear_mask(1)` 在 APIC 下无效），已改为 8042 命令启用；C.3 自检原先硬要求 0300/00 VGA 设备（VMware 没有）判 FAIL，已改为仅信息项；Shell 回显在帧缓冲上因 `\r` 被忽略、`redraw_line` 只写串口而不写帧缓冲而失效（每键冒出 `DesOS>`），已修（帧缓冲支持 `\r` 回行首 + 重绘走 kprintf）；C.2 平滑滚动改为字符网格整屏重绘（消除逐像素撕裂）。以上均经 QEMU 验收 PASS。
+
+### 阶段 C 清单
+
+- [x] **C.1** 键盘 / 鼠标（PS/2）：✅ **已完成（2026-11-07，仅 QEMU 验收）**
+  - [x] **C.1a** 键盘修饰键 + `0xE0` 扩展前缀识别（左右 Shift/Ctrl/Alt、Caps/Num/Scroll、Shift 上档符号、Ctrl+字母控制字符、扩展键码记录）。
+  - [x] **C.1b** 扩展键行编辑（方向键 / Home / End / Delete 等接到 Shell 光标 / 插入 / 删除）。
+  - [x] **C.1c** PS/2 鼠标（IRQ12 路由 + 8042 初始化 + 3 字节包解析 + `mouse` 命令）。
+- [x] **C.2** 帧缓冲输出（Limine framebuffer）：✅ **已完成（2026-11-07，仅 QEMU 验收）** — 完整 5x7 ASCII 字库、像素/矩形/读回原语、`kprintf` 日志镜像到屏幕控制台（自动换行 + 滚动）。
+- [x] **C.3** PCI 枚举（找设备）：✅ **已完成（2026-11-07，仅 QEMU 验收）** — 经典配置机制 #1（0xCF8/0xCFC）、枚举 bus 0–7、读 Vendor/Device/Class、按类找设备。
+- [x] **C.4** 磁盘驱动（ATA PIO，主盘 0x1F0）：✅ **已完成（2026-11-08，QEMU 验收 PASS）** — `kernel/inc/ata.h` + `kernel/src/ata.c`：PCI 确认 IO 空间、8042/控制器软复位、IDENTIFY 取型号/容量、LBA28 读/写扇区；自检 `test_disk()` 读 LBA0 + 写回读（远扇区先备份后恢复）。QEMU `QEMU HARDDISK` 32768 扇区读写作证通过。VMware 等无传统 IDE 盘的环境优雅跳过（驱动已在 QEMU 验证）。⚠️ 根因曾为 `outb` 形参顺序写反（值/端口颠倒），导致命令从未送达 0x1F0。
+- [x] **C.5** 网络（e1000）：✅ **已完成（2026-11-08，QEMU 验收 PASS）** — `kernel/inc/net.h` + `kernel/src/net.c`：PCI class 0x02,00 探测、BAR0 MMIO 映射（uncacheable）、软复位、RAL/RAH 读 MAC、SLU 链路 UP、TX/RX 描述符环初始化；自检 `test_net()` 验证 MAC 有效 + 链路 UP + TX 描述符被取走处理（QEMU `8086:100e` 验证通过）。⚠️ 描述符环用 PCD 非缓存映射以保证 DMA 回写可见；`TXD_STAT_DD` 回写仅在实际送达网络后端后才置位，故判据采用「DD 回写 **或** TDH 前进」。最小 TCP/IP 栈留待后续 C.5 子步。
+- [x] **C.6** USB（xHCI + HID 键鼠）：✅ **已完成（2026-11-08，QEMU 验收 PASS）** — `kernel/inc/usb.h` + `kernel/src/xhci.c`：PCI class 0x0C,03,30 探测 qemu-xhci（`1b36:000d`）、64 位 BAR0 MMIO 映射（uncacheable）、HCRST、命令环/事件环/ERST/DCBAA 初始化并 Run；端口复位枚举 → Enable Slot → Address Device → EP0 控制传输读设备/配置描述符 → 识别 HID 接口 → Configure Endpoint 建中断 IN 端点 → boot 协议提交 standing 中断传输；`usb_poll()` 由 timer tick 非阻塞调用处理传输完成并解码 HID 键鼠报告，键入喂 `shell_input_push`、鼠标喂 `mouse_inject_rel`（与 PS/2 共享输入层）。自检 `test_usb()` 以「找到 xHCI 且枚举出设备（Address Device 全链路成功）」为判据，QEMU 枚举出 usb-kbd/usb-mouse 两个设备（`0627:0001`，高速，hid=2）验证通过。⚠️ 调试踩坑（均已解决）：① ERSTBA 指向事件环段表而非环本身；② runtime/doorbell 偏移不固定（QEMU=MMIO+0x1000/+0x2000，已实现运行时探测并回退 CAPLENGTH 布局）；③ Slot Context 的 RootHubPort 在 DW1 bits16-23（1-based）、ContextEntries 在 DW0 bits27-31，EP Type 在 EP 上下文 DW1 bits3-5；④ 输入控制上下文 DW0=Drop(0)/DW1=Add(0x3)；⑤ 命令 TRB 的 Slot ID 在控制字 bits24-31；⑥ **SeaBIOS 已枚举过 USB 设备且只 ep_disable 不释放 slot 归属，内核枚举前必须对全部 slot 发 Disable Slot 清残留**；⑦ 传输完成事件仅在 TRB 置 IOC(bit5) 时产生；⑧ setup TRB 参数为小端字节序：`DW0=wValue<<16|bRequest<<8|bmReqType`，`DW1=wIndex|wLength<<16`（曾写反致 QEMU 以 len 0 查询设备）。真实键鼠输入验证留待 VMware 冒烟。
+- [x] **C.7** ACPI 与电源管理：✅ **已完成（2026-11-08，QEMU 验收 PASS + 真关机验证）** — `kernel/inc/acpi.h` + `kernel/src/acpi.c`：RSDP 校验（签名 + 全表 checksum，兼容 HHDM 地址/物理地址/EBDA 扫描兜底）→ XSDT/RSDT 逐表校验缓存 → `acpi_find_table()` 按签名查表；FADT 解析（SMI_CMD/ACPI_ENABLE、PM1a_CNT_BLK、ACPI 2.0+ 的 X_ 64 位字段与 RESET_REG）；DSDT 最小 AML 扫描取 `\_S5` 包的 SLP_TYP；`acpi_poweroff()` = 向 PM1a_CNT 写 `(SLP_TYP<<10)|SLP_EN`（QEMU 实测 pm1a=0x604、SLP_TYP=0，写后真断电）；`acpi_reboot()` = FADT RESET_REG 优先、8042(0xFE) 兜底。B.6b 的 RSDP→MADT 解析重构为复用本模块（apic.c 删除自有实现，`apic_set_rsdp` 移除、kernel_main 改调 `acpi_init`），B.6b 自检回归 PASS。Shell 新增 `poweroff` / `reboot` 命令；自检 `test_acpi()` 判据 = FACP/MADT/DSDT 三表齐 + PM1a_CNT 有效 + \_S5 解析成功。⚠️ 真关机验证方式：Shell 经 COM1 串口注入 `poweroff`（monitor `sendkey` 在 `-display none` 下进不了 guest，QEMU 侧问题），QEMU 进程随 S5 立即退出。⚠️ 踩坑：DSDT 不在 XSDT/RSDT 根表里（由 FADT 的 X_DSDT 指向）；`kprintf` 不支持 `%.6s`/`%llx`（参数错位会污染整行日志）。
+
+> **C 阶段验收记录**（C.1a/b/c、C.2、C.3 仅 QEMU + **VMware 双固件（UEFI + BIOS）冒烟整体 PASS，reboot/poweroff 均真机验证，C.7 在 QEMU/UEFI/BIOS 三套 ACPI 环境（pm1a=0x604/0x444/0x1004）全部正确解析**，2026-11-08）详见 `log.md` 的「阶段 C」。**阶段 C 正式收官。**
 
 ---
 
 ## 阶段 D：用户态、C 库与权限模型（目标 7）
 
-- [ ] **D.1** 自研 `libc`（DesOS C 运行时）：基础 `stdio` / `stdlib` / `string` / 系统调用封装。
-- [ ] **D.2** 权限分级（目标 7）：
-      - `kernel-user`：内核自身，ring 0，最高权限。
-      - `system-user`：系统服务/守护进程，受限特权，管硬件与系统资源。
-      - `sudo-user`：管理员，可经授权提权（类似 sudo，需确认）。
-      - `user`：普通用户，最小权限。
-      - 在 VFS/进程/系统调用层做 capability / ACL 校验。
-- [ ] **D.3** `init` 与服务管理（启动用户态、拉起系统服务）。
-- [ ] **D.4** 自带 CLI（类 Linux，说明更清晰；用 Python 生成 `help` 文档与命令手册）。
+- [x] **D.1** 自研 `libc`（DesOS C 运行时）：✅ **已完成（2026-11-08，QEMU 验收 PASS）** — `user/libc/`（`desos.h` 公共头 + `string.c` / `stdio.c` / `stdlib.c`）：**共享 ABI 头 `kernel/inc/desos_abi.h`**（系统调用号唯一出处，内核 `syscall.h` 与 libc 经 `-I kernel/inc` 共引，杜绝两边定义漂移）；syscall 封装 `desos_syscall()`（int 0x80，rdi/rsi/rdx 三参数）+ `write`/`exit`/`yield`/`getpid`/`sys_ticks`；string 子集 `memcpy/memmove/memset/memcmp/strlen/strcmp/strncmp/strchr`；stdio 子集 `vsnprintf`（支持 `%[0][width]{l,ll,z}{d,i,u,x,X,s,c,p,%%}`，截断语义同 C 标准）+ `printf/vprintf/snprintf/puts/putchar`（无用户态缓冲，直通内核串口）；stdlib 子集 `atoi/abs`。构建改造 `tools/build_user.py`：多文件编译（`user/*.c` + `user/libc/*.c` → `build/user/obj/`）→ 按 `user/linker.ld` 链接单个静态 ELF → incbin 内嵌内核（`-fno-stack-protector` 防链接期 `__stack_chk_fail` 未定义）。`hello.c` 改用 libc（首行输出保持 `Hello from DesOS userland (ring3)!` 兼容 B.10 验收模式串）。验收：`RESULT: PASS`，libc demo 输出 `pid=3 ticks strlen strcmp` 全部正确。✅ 后续已跟进：ELF 加载器正确处理 `.bss`（memsz>filesz 零填充）；原先「所有段按 RWX 映射」的问题已在 **D.2c** 修复为按 `p_flags` 的 W^X 映射，见 D.2c 条目。
+- [ ] **D.2** 权限分级（目标 7）：**进行中（D.2a 系统调用层已完成，2026-11-08，QEMU 验收 PASS）**
+      - ✅ **D.2a（已完成）**：`kernel/inc/priv.h` + `kernel/src/priv.c` 四级权限模型（kernel/system/sudo/user，数值越小权限越高）+ capability 校验矩阵（`CAP_POWER`→sudo 起、`CAP_THREAD_CTRL`/`CAP_HW_ACCESS`→system 起，未知 capability 一律拒绝）；TCB 增加 `priv` 字段（内核线程=kernel、用户线程默认 user，`thread_create_user_priv()` 支持指定级）；新 syscall：`SYS_PRIV_INFO`（读当前权限级）+ `SYS_POWER_OP`（受 CAP_POWER 校验的关机/重启，req=2 仅校验模式供探测）；Shell `run [user|system|sudo|kernel]` 可带权限参数——单用户控制台场景下操作者敲命令即 sudo 式授权（打印 authorized by console operator）；自检 `test_priv()` 全矩阵校验。验收：`run`→`priv level=3 power-op: denied`，`run sudo`→`privilege=sudo` + `priv level=2 power-op: allowed`，`RESULT: PASS`。
+      - [ ] D.2b：VFS 落地后在 VFS 层做 capability/ACL 校验（依赖文件系统）。
+      - ✅ **D.2c W^X 段保护（已完成，2026-11-08，QEMU 验收 PASS）**：`elf.c` 按 PT_LOAD `p_flags` 映射（PF_X→可执行不置 NX、PF_W→可写、皆无→只读+NX；内容拷贝走 HHDM 不受用户 VA 权限影响），打印 `map=r-x` 等字段；用户栈改 RW-NX（栈不可执行，阻断栈上注入代码）；`vmm_init` 兜底启用 EFER.NXE（PTE NX 位需 NXE=1 才被 CPU 尊重）；新增 `vmm_get_pte_user()` 只读查询，`test_elf` 直接核对 PTE：text `NX=0,W=0`、stack `NX=1,W=1`（实测 text pte=0x25 / stack pte=0x80000000_00000067），B.10 自检 PASS。
+- [x] **D.3** `init` 与服务管理（启动用户态、拉起系统服务）：✅ **已完成（D.3a + D.3b，2026-11-08，QEMU 验收 PASS）**
+      - ✅ **D.3a（已完成）**：`kernel/inc/service.h` + `kernel/src/service.c` 服务注册表（`SVC_MAX=16` 条：name/priv/state）；7 个内置服务注册（`fb/kbd/mouse/acpi` running + `ata/net/usb` stopped，当前测试环境无对应硬件；D.3b 起由驱动按真实探测结果更新）；`SYS_SVC_INFO`（idx<0 返回总数，否则拷贝一条 `"name running kernel"` 文本行到用户缓冲，指针校验：低半 canonical 地址空间，正式逐页 uaccess 待 D.2b）；libc 封装 `svc_count()/svc_info()`；Shell `services` 命令；自检 `test_service()`（注册/计数/文本行/非法 idx/越界/缓冲过小全判据）。**验收抓到一个真 bug 并修复**：`svc_count()` 初版返回 -1——syscall 处理先校验用户缓冲再处理 idx<0 计数查询，而计数查询本不带缓冲；修复为 idx<0 先行。最终：内核表 7 服务、Shell 列表正确、用户态 `services: 7` + 逐行查询正确、`RESULT: PASS`。
+      - ✅ **D.3b（已完成，2026-11-08，QEMU 验收 PASS）**：`user/apps/` 多程序（`hello.c` 迁入 + 新增 `init.c`）；`tools/build_user.py` 重写为每个 app 单独链接静态 ELF、NASM `incbin` 多个镜像并生成 manifest 表 `userapp_table[]`（name/start/end）+ `userapp_table_len`，hello 保留兼容符号 `user_elf_start/end` 供 B.10 自检；内核 `kernel/inc/userapp.h` + `kernel/src/userapp.c` 提供 `userapp_count/at/find`；`kernel/src/init.c` 的 `init_launch()` 在自检后以 **PRIV_SYSTEM** 创建 init 用户线程、开 PIT IRQ0 + sti 等待 `SYS_EXIT`（实测 `pid=7 priv=1`、读到 8 条服务、逐行汇报后正常退出）；Shell 升级为 `run [app] [priv]`（实测 `run init system` → `run: app=init privilege=system`）；自检 `test_userapp()` 校验 manifest 条目数、ELF 魔数、越界/未知名拒绝。修复两个问题：`svc_count()` 初版返回 -1（syscall 缓冲校验先于 idx<0 计数查询）；`launching init` 日志与用户 printf 串口交错（打印期间 cli 后再 sti）。
+      - ⚠️ 已知限制：init 目前是「监督/汇报」骨架（服务 running 由内核启动、stopped 因无硬件跳过），真正的动态 start/stop 需等 IPC + `SYS_SVC_CTRL`；`elf_load()` 每次加载的用户页/PML4 尚未回收（B.10 遗留，阶段 E 内存回收一并处理）；`SYS_SVC_INFO` 的用户指针只做低半范围校验（逐页 uaccess 待 D.2b/VMM 审查）。
+
+- [x] **D.4** 自带 CLI（类 Linux，说明更清晰；用 Python 生成 `help` 文档与命令手册）：✅ **已完成（2026-11-08，QEMU 验收 PASS）**
+      - **单一数据源**：`tools/gen_cli_docs.py` 的 `COMMANDS` 规格表（16 条命令 / 7 别名 / 5 个分组，含 D.5 追加的 `verbose`；字段：name/group/usage/brief/details/example/aliases）；`validate()` 校验必填字段、组名合法、命令名与别名无冲突；`build_kernel.py` 每次构建前自动重生成，生成失败即中止构建，`run_qemu_btest.ps1` 也校验三份产物存在 → 文档与运行时永不漂移。
+      - **三份产物**：`kernel/inc/cli_commands.h`（C 命令表 + `cli_canonical()` 别名解析，Shell 运行时读取）、`docs/cli-help.txt`（纯文本 help 文档，与 Shell 输出同格式）、`docs/cli-commands.md`（中文命令手册：约定 / 快速清单表格 / 逐命令详解+示例）。**中英双视图**：帧缓冲是 ASCII 位图字体，C 表与 help.txt 走英文映射（`EN` / `GROUP_EN`），中文简述与详解留给 Markdown 手册，避免屏幕乱码。
+      - **Shell 升级**：`help` 改为按分组遍历生成表打印；新增 `help <command>` 详细帮助（usage/alias/desc/note/example）与任意命令 `--help` / `-h`；别名规范化（`uname`/`about`→version、`free`→mem、`uptime`→ticks、`ps`→threads、`svc`→services、`?`→help）；新增 `whoami`；`version` 文案更新到阶段 D。
+      - **验收证据**：`RESULT: PASS`；新增 5 项检查全绿（D.4 help list / help detail / alias / whoami / --help）；B.11 自检注入序列扩充到 12 条成功命令仍 PASS；串口实测 `DesOS CLI - command list`、`usage: run [app] [priv]`、`DesOS 0.1 x86_64 - stage D`、`whoami: main (pid=0 priv=kernel)`、`usage: ticks`。
+
+- [x] **D.5** 启动显示与交互修复（2026-11-08，用户反馈，QEMU 验收 PASS）：
+      - **默认静默启动**：新增 `kprintf_set_quiet()` / `kprintf_is_quiet()`；从 `fb_console_init()` 之后到自检结束，kprintf 只写 COM1 串口（自检、命令演示、init 汇报全部保留在日志），帧缓冲屏幕不刷屏。进 Shell 前 `fb_clear(bg)` 重画 "DesOS boot OK" 大字（同时清掉 C.2 自检的像素测试痕迹）+ 新增 `fb_console_clear()` 清网格/行列状态，再恢复屏幕镜像。新增 `verbose [on|off]` 命令，可随时打开/关闭屏幕镜像（串口日志始终完整）；命令规格由 D.4 生成器统一维护。
+      - **修复「吞掉第一个字符」**：根因是自检阶段（B.11 命令演示、C.1 行编辑测试）在 Shell 行缓冲留下脏 `rendered_len`，而 `shell_run()` 从未重置；用户第一个按键触发 `redraw_line()` 时按旧长度补空格擦尾，把刚输入的字符擦掉（VMware 日志里 `poweroff` 被打成 `ower...` 后删掉重打，正是此现象）。修复：新增 `shell_prepare_interactive()`（`shell_run` 与其共用）＝ `shell_input_flush()` 重置行状态 + 首帧 `print_prompt()`；另在 `kbd_init()` 开头排空 PS/2 输出缓冲，避免 IRQ1 打开前按下的键残字节被 "read configuration byte" 的 `inb(0x60)` 误读成 cfg（既吞键又可能写错控制器配置）。
+      - **修复「必须按任意键才显示 `DesOS>`」**：`shell_run()` 原本不打印提示符，只有按键触发 `redraw_line()` 才输出 `\rDesOS> `；现在启动即打印首帧 prompt，与是否静默无关（verbose 模式下同样不再复现）。
+      - **C.2 自检适配**：原判据「自检日志刷屏产生的 `fb_console_rows()>0`」在静默后失效，改为直接向 fb_console 写换行验证行数累计（`rows=1`）。
+      - **回归自检**：`test_shell_startup()` 制造脏行状态 → `shell_input_flush()` 重置（与 `shell_prepare_interactive()` 的第一步一致，但不打印伪 banner，避免串口日志出现两次 `interactive shell`；首帧 prompt 与唯一一次 banner 由真正的 `shell_run()` 打印）→ 注入首字符 `'Z'` → 断言行缓冲恰为 `"Z"`（防吞字符回归）+ 校验 quiet 开关。验收：`RESULT: PASS`，新增 4 项 D.5 检查全绿（quiet boot / first key / first prompt / verbose）；B.11 注入序列扩到 13 条命令仍 PASS。
+
 
 ---
 
@@ -276,10 +316,10 @@
 |------|------|------|
 | 0 | 环境准备 | 进行中（0.1-0.22 完成；0.23-0.26 完成，仅 0.27 `make install` 待办；交叉链已完成）|
 | A | 引导与内核骨架 (M1) | ✅ **已完成**（A.1-A.8 全部完成，M1 达成；Windows QEMU 11.1.0 + WSL QEMU 8.2.2 双环境验证 PASS）|
-| B | 内核核心 | ✅ **已完成**（B.1–B.11 全部完成，含 B.6b APIC 切换；QEMU 16 项检查 PASS；M2 达成，进入可交互 Shell）|
-| C | 设备与驱动 | 待开始 |
-| D | 用户态/权限 (M2) | 待开始 |
-| E | 兼容层 (M3/M4/M6) | 待开始 |
+| B | 内核核心 | ✅ **已完成**（B.1–B.11 全部完成，含 B.6b APIC 切换；M2 达成，进入可交互 Shell；B 阶段收官时 16 项检查 PASS，现已并入 43 项全量验收）|
+| C | 设备与驱动 | ✅ **已完成**（C.1 键鼠、C.2 帧缓冲、C.3 PCI 枚举、C.4 磁盘、C.5 网络、C.6 USB、C.7 ACPI 全部完成，QEMU 验收 PASS + VMware 双固件冒烟 + `poweroff`/`reboot` 真机验证）|
+| D | 用户态/权限 (M2) | ✅ **已完成**（D.1 libc、D.2a 权限分级+capability、D.2c W^X、D.3a 服务注册表、D.3b 多程序+真 init、D.4 CLI+文档生成、D.5 静默启动/首键修复全部完成，QEMU 43 项全量回归 PASS；仅 D.2b VFS ACL 依赖后续文件系统阶段）|
+| E | 兼容层 (M3/M4/M6) | 待开始（下一阶段主线）|
 | F | 图形界面 (M5) | 待开始 |
 | G | 软件生态 | 待开始 |
 | H | 省电/更新 | 待开始 |

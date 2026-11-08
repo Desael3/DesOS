@@ -10,6 +10,9 @@
 #define PT_LOAD           1
 #define ET_EXEC           2
 #define EM_X86_64         62
+#define PF_X              1   // D.2c：ELF 段权限位（W^X 映射依据）
+#define PF_W              2
+#define PF_R              4
 #define USER_STACK_PAGES  4
 // 低半 canonical 上界是 0x00007FFFFFFFFFFF；4 页栈必须整体落在它之内。
 // 0x7FFFFFFFC000 + 4*4K = 0x800000000000 正好是「栈顶端（不含）」，
@@ -74,6 +77,12 @@ int elf_load(const uint8_t *image, uint64_t size, struct user_image *out) {
         uint64_t seg_start = ph.p_vaddr;
         uint64_t seg_end   = ph.p_vaddr + ph.p_filesz;
 
+        // D.2c W^X：按 ELF 段权限映射（内容拷贝走 HHDM，不受用户 VA 权限影响）
+        //   PF_W -> W；PF_X -> 可执行（不置 NX）；二者皆无 -> 只读且 NX
+        uint64_t map_flags = VMM_PRESENT | VMM_USER;
+        if (ph.p_flags & PF_W) map_flags |= VMM_WRITE;
+        if (!(ph.p_flags & PF_X)) map_flags |= VMM_NX;
+
         for (uint64_t va = first; va < last; va += PAGE_SIZE) {
             uint64_t phys = pmm_alloc_frame();
             if (phys == 0) return -9;
@@ -87,12 +96,14 @@ int elf_load(const uint8_t *image, uint64_t size, struct user_image *out) {
                         image + ph.p_offset + (cs - seg_start),
                         (size_t)(ce - cs));
             }
-            if (vmm_map_user(pml4, va, phys,
-                             VMM_PRESENT | VMM_WRITE | VMM_USER) != 0) return -10;
+            if (vmm_map_user(pml4, va, phys, map_flags) != 0) return -10;
         }
         loaded_segments++;
-        kprintf("[B.10] PT_LOAD off=0x%lx vaddr=0x%016lx filesz=%lu memsz=%lu flags=0x%x\n",
-                ph.p_offset, ph.p_vaddr, ph.p_filesz, ph.p_memsz, (unsigned)ph.p_flags);
+        kprintf("[B.10] PT_LOAD off=0x%lx vaddr=0x%016lx filesz=%lu memsz=%lu flags=0x%x map=%s%s%s\n",
+                ph.p_offset, ph.p_vaddr, ph.p_filesz, ph.p_memsz, (unsigned)ph.p_flags,
+                (ph.p_flags & PF_R) ? "r" : "-",
+                (ph.p_flags & PF_W) ? "w" : "-",
+                (ph.p_flags & PF_X) ? "x" : "-");
     }
     if (loaded_segments == 0) return -11;
 
@@ -104,7 +115,7 @@ int elf_load(const uint8_t *image, uint64_t size, struct user_image *out) {
         if (phys == 0) return -12;
         kmemset((void *)(phys + hhdm), 0, (size_t)PAGE_SIZE);
         int mrc = vmm_map_user(pml4, USER_STACK_BOTTOM + i * PAGE_SIZE, phys,
-                               VMM_PRESENT | VMM_WRITE | VMM_USER);
+                               VMM_PRESENT | VMM_WRITE | VMM_USER | VMM_NX);
         if (mrc != 0) {
             kprintf("[B.10] stack map failed i=%lu rc=%d va=0x%016lx\n",
                     i, mrc, USER_STACK_BOTTOM + i * PAGE_SIZE);

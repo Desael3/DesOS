@@ -1,0 +1,28 @@
+DesOS CLI - command list (help <command> for details)
+
+[Basics]
+  help [command] : Show command list or detailed help
+  echo [text...] : Print a line of text
+  clear : Clear framebuffer console
+  version : Show kernel version and stage
+  verbose [on|off] : Toggle screen log mirror (serial log always on)
+
+[System info]
+  mem : Physical memory total and free
+  ticks : PIT ticks since boot
+  pid : Current thread id, name and privilege
+  threads : Thread stats: created / switches / ring3 syscalls
+  whoami : Show current identity (name, pid, privilege)
+  services : List service registry (name, state, privilege)
+
+[User programs]
+  run [app] [priv] : Load and run an embedded user ELF program
+
+[Hardware debug]
+  mouse : PS/2 mouse coords, buttons, packets, IRQ12 count
+
+[Power]
+  halt : Halt CPU (hlt loop, no power off)
+  poweroff : ACPI S5 power off
+  reboot : Reboot the machine
+

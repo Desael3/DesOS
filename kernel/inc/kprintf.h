@@ -6,4 +6,9 @@
 // 不分配内存、不递归，可在中断/异常上下文早期使用。
 void kprintf(const char *fmt, ...);
 
+// D.5 屏幕镜像开关：quiet=1 时 kprintf 只写 COM1 串口（日志完整保留），
+// 不再把自检/命令演示刷到帧缓冲屏幕。默认 0（保持旧行为）。
+void kprintf_set_quiet(int quiet);
+int  kprintf_is_quiet(void);
+
 #endif // DESOS_KPRINTF_H

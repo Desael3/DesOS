@@ -9,6 +9,9 @@
 #include "sched.h"
 #include "timer.h"
 #include "thread.h"
+#include "priv.h"
+#include "service.h"
+#include "acpi.h"
 #include "kprintf.h"
 #include <stdint.h>
 
@@ -41,6 +44,35 @@ int64_t syscall_dispatch(struct interrupt_frame *f) {
         case SYS_GETPID: {
             struct thread *t = sched_current();
             return t != NULL ? (int64_t)t->id : -1;
+        }
+        case SYS_PRIV_INFO: {
+            struct thread *t = sched_current();
+            return t != NULL ? (int64_t)t->priv : -1;
+        }
+        case SYS_POWER_OP: {
+            // D.2 capability 校验：CAP_POWER 允许 kernel/system/sudo；
+            // req=2 为仅校验（不真正关机），供用户态与自检探测。
+            struct thread *t = sched_current();
+            uint64_t req = f->rdi;
+            if (t == NULL) return -1;
+            if (priv_check_cap(t->priv, CAP_POWER) != 0) return -1;
+            if (req == 2) return 0;
+            if (req == 0) acpi_poweroff();
+            if (req == 1) acpi_reboot();
+            return -1;
+        }
+        case SYS_SVC_INFO: {
+            // D.3：服务表查询。idx<0 返回总条数（无需缓冲）；否则拷贝一条
+            // 文本行到用户缓冲。指针校验：必须落在低半（用户）canonical
+            // 地址空间——正式的逐页 uaccess 校验待 D.2b/VMM 审查后补上。
+            int64_t idx = (int64_t)f->rdi;
+            if (idx < 0) return service_count();
+            const uint64_t buf = f->rsi;
+            const uint64_t len = f->rdx;
+            if (buf == 0 || len < 32) return -1;
+            if (buf >= 0x0000800000000000ULL || buf + len > 0x0000800000000000ULL)
+                return -1;
+            return service_info((int)idx, (char *)buf, (int)len);
         }
         default:
             return -1;

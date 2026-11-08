@@ -68,6 +68,10 @@ def main():
 
     os.makedirs(BUILD_DIR, exist_ok=True)
 
+    # 0a) D.4：从单一数据源生成 CLI 命令表 / help 文档 / 命令手册，
+    #     保证 kernel/inc/cli_commands.h 与 docs/ 永不漂移（生成失败即中止构建）。
+    run(sys.executable, [os.path.join(ROOT, "tools", "gen_cli_docs.py")])
+
     # 0) B.10：先编译用户态程序，生成 build/user_image.asm（incbin ELF 镜像）
     run(sys.executable, [os.path.join(ROOT, "tools", "build_user.py")])
 

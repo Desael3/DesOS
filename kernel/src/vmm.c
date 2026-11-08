@@ -83,6 +83,28 @@ int vmm_map_user(uint64_t pml4, uint64_t va, uint64_t phys, uint64_t flags) {
     return 0;
 }
 
+// D.2c：只读查询用户地址空间某 4K 对齐 VA 的 PTE 原始值（0=未映射/无法到达）。
+// 供 B.10 自检验证 W^X 映射（text NX=0 且 W=0、栈 NX=1 且 W=1）。
+uint64_t vmm_get_pte_user(uint64_t pml4, uint64_t va) {
+    if (hhdm == 0 || pml4 == 0 || (va & (PAGE_SIZE - 1))) return 0;
+    const uint64_t *pt = walk_pt_in(pml4, va, 0);
+    if (pt == NULL) return 0;
+    return pt[idx_of(va, 3)];
+}
+
+// D.2c：确保 EFER.NXE（MSR 0xC0000080 bit11）开启——PTE 的 NX 位只有在
+// NXE=1 时才被 CPU 尊重。Limine 通常已开启，这里兜底自检式启用。
+static void vmm_enable_nxe(void) {
+    uint32_t msr = 0xC0000080u;
+    uint32_t lo, hi;
+    __asm__ volatile ("rdmsr" : "=a"(lo), "=d"(hi) : "c"(msr));
+    if (!(lo & (1u << 11))) {
+        lo |= 1u << 11;
+        __asm__ volatile ("wrmsr" : : "c"(msr), "a"(lo), "d"(hi));
+        kprintf("[D.2c] EFER.NXE enabled\n");
+    }
+}
+
 void vmm_init(void) {
     hhdm = pmm_hhdm_offset();
     pml4_phys = read_cr3() & ADDR_MASK;
@@ -91,6 +113,7 @@ void vmm_init(void) {
         hhdm = 0;
         return;
     }
+    vmm_enable_nxe();
 
     uint64_t *pml4 = table(pml4_phys);
     uint64_t i_heap = idx_of(KHEAP_BASE, 0);

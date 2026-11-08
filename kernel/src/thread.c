@@ -8,6 +8,7 @@
 #include "vmm.h"
 #include "elf.h"
 #include "heap.h"
+#include "priv.h"
 #include "kstring.h"
 #include <stdint.h>
 
@@ -38,6 +39,7 @@ struct thread *thread_create(const char *name, void (*entry)(void *), void *arg)
     t->id = (int)(++created_count);
     t->state = THREAD_READY;
     t->cr3 = vmm_current_pml4_phys();
+    t->priv = PRIV_KERNEL;                 // 内核线程
     t->entry = entry;
     t->arg = arg;
     t->stack_base = (uint64_t)stack;
@@ -63,8 +65,10 @@ struct thread *thread_create(const char *name, void (*entry)(void *), void *arg)
 
 // B.10：用户态线程。初始中断帧直接指定 ring3 的 CS/SS/RSP/RIP，
 // 调度器切到它时，统一的 iretq 会把 CPU 从 ring0 降到 ring3。
-struct thread *thread_create_user(const char *name, const struct user_image *img) {
+struct thread *thread_create_user_priv(const char *name, const struct user_image *img,
+                                       uint8_t priv) {
     if (img == NULL || img->pml4_phys == 0) return NULL;
+    if (priv > PRIV_USER) return NULL;
     struct thread *t = (struct thread *)kmalloc(sizeof(struct thread));
     if (t == NULL) return NULL;
     uint8_t *stack = (uint8_t *)kmalloc(THREAD_STACK_SIZE);
@@ -76,6 +80,7 @@ struct thread *thread_create_user(const char *name, const struct user_image *img
     t->id = (int)(++created_count);
     t->state = THREAD_READY;
     t->cr3 = img->pml4_phys;
+    t->priv = priv;                            // D.2：默认 PRIV_USER，可经授权提权
     t->stack_base = (uint64_t)stack;
     for (int i = 0; name != NULL && i < 15 && name[i] != '\0'; i++) t->name[i] = name[i];
 
@@ -93,6 +98,11 @@ struct thread *thread_create_user(const char *name, const struct user_image *img
 
     sched_enqueue(t);
     return t;
+}
+
+// 兼容旧调用点（B.10 自检）：默认以 PRIV_USER 创建
+struct thread *thread_create_user(const char *name, const struct user_image *img) {
+    return thread_create_user_priv(name, img, PRIV_USER);
 }
 
 struct thread *thread_current(void) { return sched_current(); }

@@ -23,6 +23,7 @@ struct thread {
     uint64_t cr3;               // 地址空间（内核线程共用内核 PML4；用户线程独立）
     thread_state_t state;
     int id;
+    uint8_t priv;               // D.2 权限级（priv_level_t）：内核线程=kernel，用户线程默认 user
     struct thread *next;        // 就绪队列链表
     void (*entry)(void *);
     void *arg;
@@ -31,6 +32,9 @@ struct thread {
 
 struct thread *thread_create(const char *name, void (*entry)(void *), void *arg);
 struct thread *thread_create_user(const char *name, const struct user_image *img);
+// D.2：以指定权限级创建用户线程（Shell 的 run [priv] / D.3 init 用）
+struct thread *thread_create_user_priv(const char *name, const struct user_image *img,
+                                       uint8_t priv);
 struct thread *thread_current(void);
 void thread_exit(void);         // 走 SYS_EXIT 系统调用，标记 DEAD 并让出
 uint64_t thread_count(void);    // 已创建的内核线程数（不含 main）

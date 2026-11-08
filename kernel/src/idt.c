@@ -12,6 +12,7 @@
 #include "timer.h"
 #include "syscall.h"
 #include "kbd.h"
+#include "mouse.h"
 #include "apic.h"
 #include <stdint.h>
 
@@ -146,6 +147,7 @@ void isr_common_handler(struct interrupt_frame *f) {
         irq_count[irq]++;
         if (irq == 0) timer_on_tick();     // B.7：时间片到期请求重新调度
         if (irq == 1) kbd_on_irq1();      // B.11：PS/2 键盘输入
+        if (irq == 12) mouse_on_irq12();  // C.1c：PS/2 鼠标（向量 44）
         pit_on_irq(irq);
         // B.6a 走 8259A EOI；B.6b 切换后必须写 LAPIC EOI，否则同一向量不再投递。
         if (apic_enabled()) apic_send_eoi(); else pic_send_eoi(irq);

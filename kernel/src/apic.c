@@ -7,6 +7,7 @@
 // 因此 B.7 起的调度、B.11 的键盘链路在切换后保持原有向量约定。
 
 #include "apic.h"
+#include "acpi.h"
 #include "pmm.h"
 #include "vmm.h"
 #include "pic.h"
@@ -45,32 +46,10 @@
 #define IRQ_BASE_VECTOR 32
 #define MAX_OVERRIDES   16
 
-struct acpi_header {
-    char     signature[4];
-    uint32_t length;
-    uint8_t  revision;
-    uint8_t  checksum;
-    char     oem_id[6];
-    char     oem_table_id[8];
-    uint32_t oem_revision;
-    uint32_t creator_id;
-    uint32_t creator_revision;
-} __attribute__((packed));
-
-struct rsdp_desc {
-    char     signature[8];
-    uint8_t  checksum;
-    char     oem_id[6];
-    uint8_t  revision;
-    uint32_t rsdt_addr;
-    uint32_t length;
-    uint64_t xsdt_addr;
-    uint8_t  extended_checksum;
-    uint8_t  reserved[3];
-} __attribute__((packed));
-
+// 表头 / RSDP 结构与 RSDP->XSDT/RSDT 查找已统一迁到 acpi.c（C.7），
+// 这里只保留 MADT 自身的布局与解析。
 struct madt_desc {
-    struct acpi_header hdr;
+    struct acpi_table_header hdr;
     uint32_t lapic_addr;
     uint32_t flags;
 } __attribute__((packed));
@@ -85,8 +64,6 @@ struct irq_override {
 static struct irq_override overrides[MAX_OVERRIDES];
 static uint32_t override_count;
 
-static uint64_t hhdm_offset;
-static uint64_t rsdp_addr;
 static volatile uint32_t *lapic;
 static volatile uint32_t *ioapic;
 static uint64_t lapic_phys;
@@ -126,77 +103,10 @@ static inline void ioapic_write(uint32_t reg, uint32_t val) {
     ioapic[4] = val;
 }
 
-static uint8_t acpi_checksum(const void *p, uint64_t len) {
-    const uint8_t *b = (const uint8_t *)p;
-    uint8_t sum = 0;
-    for (uint64_t i = 0; i < len; i++) sum = (uint8_t)(sum + b[i]);
-    return sum;
-}
+// RSDP 校验与根表查找（原 locate_rsdp/find_madt）已由 acpi.c（C.7）统一提供，
+// apic_init 直接用 acpi_find_table("APIC") 拿 MADT。
 
-static int sig_eq(const char *a, const char *b) {
-    return kmemcmp(a, b, 4) == 0;
-}
-
-static int rsdp_valid(uint64_t va) {
-    const struct rsdp_desc *r = (const struct rsdp_desc *)(uintptr_t)va;
-    if (kmemcmp(r->signature, "RSD PTR ", 8) != 0) return 0;
-    uint32_t len = (r->revision >= 2 && r->length >= 20) ? r->length : 20;
-    if (len > 4096) return 0;
-    return acpi_checksum((const void *)(uintptr_t)va, len) == 0;
-}
-
-// base revision 1 下 Limine 返回的 RSDP 是 HHDM 虚拟地址；也兼容物理地址与
-// 直接扫描 0xE0000-0xFFFFF（固件没给响应时的兜底）。
-static uint64_t locate_rsdp(void) {
-    if (hhdm_offset == 0) return 0;
-    if (rsdp_addr >= hhdm_offset && rsdp_valid(rsdp_addr)) return rsdp_addr;
-    if (rsdp_addr != 0 && rsdp_addr < hhdm_offset &&
-        rsdp_valid(rsdp_addr + hhdm_offset)) return rsdp_addr + hhdm_offset;
-    for (uint64_t p = 0xE0000; p < 0x100000; p += 16) {
-        if (rsdp_valid(p + hhdm_offset)) return p + hhdm_offset;
-    }
-    return 0;
-}
-
-static const struct acpi_header *find_madt(uint64_t rsdp_va) {
-    const struct rsdp_desc *r = (const struct rsdp_desc *)(uintptr_t)rsdp_va;
-    uint64_t tab_phys = 0;
-    int xsdt = 0;
-    if (r->revision >= 2 && r->xsdt_addr != 0) {
-        tab_phys = r->xsdt_addr;
-        xsdt = 1;
-    } else if (r->rsdt_addr != 0) {
-        tab_phys = r->rsdt_addr;
-    }
-    if (tab_phys == 0) return NULL;
-
-    const struct acpi_header *t =
-        (const struct acpi_header *)(uintptr_t)(tab_phys + hhdm_offset);
-    if (t->length < sizeof(struct acpi_header) || t->length > (1U << 20)) return NULL;
-    if (acpi_checksum(t, t->length) != 0) return NULL;
-
-    uint64_t step = xsdt ? 8 : 4;
-    uint64_t count = (t->length - sizeof(struct acpi_header)) / step;
-    const uint8_t *p = (const uint8_t *)t + sizeof(struct acpi_header);
-    for (uint64_t i = 0; i < count; i++) {
-        uint64_t entry;
-        if (xsdt) {
-            kmemcpy(&entry, p + i * 8, 8);
-        } else {
-            uint32_t e32;
-            kmemcpy(&e32, p + i * 4, 4);
-            entry = e32;
-        }
-        if (entry == 0) continue;
-        const struct acpi_header *h =
-            (const struct acpi_header *)(uintptr_t)(entry + hhdm_offset);
-        if (h->length < sizeof(struct acpi_header) || h->length > (1U << 20)) continue;
-        if (sig_eq(h->signature, "APIC")) return h;
-    }
-    return NULL;
-}
-
-static int parse_madt(const struct acpi_header *h) {
+static int parse_madt(const struct acpi_table_header *h) {
     const struct madt_desc *m = (const struct madt_desc *)h;
     lapic_phys = m->lapic_addr;
     ioapic_phys = 0;
@@ -264,23 +174,17 @@ static void ioapic_route(uint32_t pin, uint8_t vector, uint16_t flags) {
     ioapic_write(reg + 1, (uint32_t)bsp_id << 24);      // destination = BSP LAPIC ID
 }
 
-void apic_set_rsdp(uint64_t addr, uint64_t hhdm) {
-    rsdp_addr = addr;
-    hhdm_offset = hhdm;
-}
-
 int apic_init(void) {
     enabled = 0;
     int rc = 0;
-    const struct acpi_header *madt;
+    const struct acpi_table_header *madt;
     uint64_t apic_base_msr, msr_phys;
     uint32_t io_ver, gsi0;
     uint16_t f0;
 
-    uint64_t rsdp_va = locate_rsdp();
-    if (rsdp_va == 0) { rc = -2; goto fail; }
-
-    madt = find_madt(rsdp_va);
+    // RSDP/根表已由 acpi_init()（C.7，kernel_main 在堆初始化后调用）解析好；
+    // 若 ACPI 未就绪则 MADT 找不到，走 PIC 回退路径。
+    madt = acpi_find_table("APIC");
     if (madt == NULL) { rc = -3; goto fail; }
     if (parse_madt(madt) != 0) { rc = -4; goto fail; }
 
@@ -315,7 +219,7 @@ int apic_init(void) {
     lapic_write(LAPIC_SVR, 0x100 | SPURIOUS_VECTOR);   // bit8 = APIC 软件使能
     lapic_write(LAPIC_EOI, 0);                         // 清掉可能的残留 EOI
 
-    // IOAPIC：先屏蔽全部引脚，再只放行 PIT(IRQ0) 与键盘(IRQ1)。
+    // IOAPIC：先屏蔽全部引脚，再放行 PIT(IRQ0)、键盘(IRQ1) 与 C.1c 鼠标(IRQ12)。
     for (uint32_t pin = 0; pin < ioapic_pins; pin++) {
         uint32_t reg = IOAPIC_REDIR + pin * 2;
         ioapic_write(reg, ioapic_read(reg) | (1U << 16));
@@ -325,6 +229,8 @@ int apic_init(void) {
     ioapic_route(0, IRQ_BASE_VECTOR, 0);               // 无 override 时的 PIT 连线
     if (gsi0 != 0) ioapic_route(gsi0, IRQ_BASE_VECTOR, f0);
     ioapic_route(apic_gsi_for_irq(1), IRQ_BASE_VECTOR + 1, override_flags_for_irq(1));
+    // C.1c：PS/2 鼠标 IRQ12 -> 向量 44，与键盘一起随 APIC 初始化放行
+    ioapic_route(apic_gsi_for_irq(12), IRQ_BASE_VECTOR + 12, override_flags_for_irq(12));
 
     // 屏蔽 8259A；PCAT_COMPAT 平台上经 IMCR 把 INTR 从 PIC 切到 APIC。
     outb(0x21, 0xFF);
@@ -343,8 +249,8 @@ int apic_init(void) {
     return 0;
 
 fail:
-    kprintf("[B.6b] apic_init failed rc=%d (rsdp=0x%016lx hhdm=0x%016lx)\n",
-            rc, rsdp_addr, hhdm_offset);
+    kprintf("[B.6b] apic_init failed rc=%d (acpi_ready=%d)\n",
+            rc, acpi_ready());
     return rc;
 }
 
@@ -382,4 +288,14 @@ uint32_t apic_override_count(void)  { return override_count; }
 uint32_t apic_redir_low(uint32_t pin) {
     if (ioapic == NULL || pin >= ioapic_pins) return 0;
     return ioapic_read(IOAPIC_REDIR + pin * 2);
+}
+
+// 屏蔽/放开单个 IOAPIC 引脚（redir bit16）。自检注入键盘事件时用，
+// 防止真实键盘 IRQ 与 kbd_inject_scancode 竞争状态机（VMware 实测踩坑）。
+void apic_mask_gsi(uint32_t gsi, int masked) {
+    if (!enabled || ioapic == NULL || gsi >= ioapic_pins) return;
+    uint32_t reg = IOAPIC_REDIR + gsi * 2;
+    uint32_t low = ioapic_read(reg);
+    low = masked ? (low | (1U << 16)) : (low & ~(1U << 16));
+    ioapic_write(reg, low);
 }
